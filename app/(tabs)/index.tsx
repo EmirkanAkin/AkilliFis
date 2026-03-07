@@ -1,150 +1,257 @@
-// React Native kütüphanesinden temel görsel bileşenleri alıyoruz.
+/* GEREKLİ ARAÇLARIN İÇERİ AKTARILMASI */
 import {
-  StyleSheet, // Görünmez kutular oluşturmak için (Div gibi).
+  // Sayfa içeriğinin (ScrollView gibi) dikeyde kaymasını sağlar.
+  ScrollView,
+  // CSS benzeri stil kurallarını yazdığımız JavaScript nesnesi.
+  StyleSheet,
+  // Ekrana her türlü metni (yazıyı) basmak için kullanılır.
   Text,
-  View, // Görünmez kutular oluşturmak için (Div gibi).
+  // Tıklandığında şeffaflaşarak (Opacity) görsel geri bildirim veren buton yapısı.
+  TouchableOpacity,
+  // Diğer bileşenleri gruplamak için kullanılan temel kutu (div) bileşeni.
+  View,
 } from "react-native";
 
-// Expo'nun hazır ikon paketinden 'Ionicons' setini dahil ediyoruz.
+// Expo'nun sunduğu hazır ikon kütüphanesinden 'Ionicons' setini çağırıyoruz.
 import { Ionicons } from "@expo/vector-icons";
 
-// Bütçe kartının arka planındaki renk geçişi (gradient) eklentisini dahil ediyoruz.
+// İki veya daha fazla renk arasında yumuşak geçiş sağlayan arka plan bileşeni.
 import { LinearGradient } from "expo-linear-gradient";
 
-// Uygulamanın başlangıç noktası olan HomeScreen fonksiyonunu başlatıyoruz.
 export default function HomeScreen() {
   return (
-    /* ANA EKRAN: Tüm içeriği içine alan en dış kutu. */
-    <View style={styles.anaEkran}>
-      {/* ÜST BİLGİ (HEADER): Selamlama ve İkonun yan yana durduğu satır. */}
+    /* ScrollView: İçerik ekran boyunu aşarsa aşağı kaydırmayı aktif eder. */
+    <ScrollView style={styles.anaEkran} showsVerticalScrollIndicator={false}>
+      {/* 1. HEADER (BAŞLIK) BÖLÜMÜ */}
       <View style={styles.ustBilgiKutusu}>
-        {/* YAZI GRUBU: İki metni alt alta tutan iç kutu. */}
+        {/* Sol taraftaki yazı alanı */}
         <View>
-          {/* Soluk ve küçük 'MERHABA' yazısı. */}
+          {/* Saydam beyaz renkte 'MERHABA' başlığı */}
           <Text style={styles.merhabaYazisi}>MERHABA</Text>
-          {/* Kalın ve beyaz kullanıcı ismi. */}
+          {/* Kullanıcının isminin yazdığı büyük ve kalın metin */}
           <Text style={styles.isimYazisi}>Emirkan 👋</Text>
         </View>
 
-        {/* İKON KUTUSU: Bildirim çanı ve yeşil noktayı tutan kutu. */}
-        <View style={styles.profilIkonu}>
-          {/* Çizgisel beyaz bildirim çanı ikonu. */}
+        {/* --- YENİ: Bildirim İkonu Artık Tıklanabilir --- */}
+        <TouchableOpacity activeOpacity={0.6} style={styles.profilIkonu}>
+          {/* Çizgisel stilde beyaz bildirim çanı */}
           <Ionicons name="notifications-outline" size={22} color="white" />
-          {/* Sağ üste yapıştırılmış küçük yeşil bildirim noktası. */}
+          {/* Bildirim olduğunu belirten küçük, neon yeşil aktiflik noktası */}
           <View style={styles.aktifNoktasi} />
-        </View>
+        </TouchableOpacity>
       </View>
 
-      {/* BÜTÇE KARTI: Renk geçişli ana görsel alan. */}
+      {/* 2. BÜTÇE KARTI BÖLÜMÜ */}
       <LinearGradient
-        /* Kartın zeminindeki 3 ana koyu yeşil tonu. */
+        /* Kartın zeminindeki koyu yeşil tonlarını sırasıyla belirliyoruz. */
         colors={["#1A2A1A", "#1E3A2E", "#1A2820"]}
-        /* Renk geçişi sol üst köşeden başlasın. */
+        /* Geçişin sol üst köşeden başlamasını sağlar. */
         start={{ x: 0, y: 0 }}
-        /* Renk geçişi sağ alt köşede bitsin. */
+        /* Geçişin sağ alt köşede bitmesini sağlar. */
         end={{ x: 1, y: 1 }}
-        /* Kartın şekil ve boşluk ayarlarını bağlıyoruz. */
+        /* Kartın kenar kıvrımları ve gölgeleri için stili bağlıyoruz. */
         style={styles.butceKarti}
       >
-        {/* Kartın içindeki küçük başlık metni. */}
+        {/* Kart içindeki küçük açıklama başlığı */}
         <Text style={styles.kartBaslik}>TOPLAM HARCAMA (BU AY)</Text>
 
-        {/* PARA GRUBU: Rakam ve TL yazısını yan yana dizen kutu. */}
+        {/* Miktar ve TL birimini yan yana tutan kutu */}
         <View style={styles.paraKutusu}>
-          {/* Ana harcama rakamı. */}
+          {/* Harcanan tutarı gösteren devasa beyaz rakamlar */}
           <Text style={styles.paraMiktari}>14.580</Text>
-          {/* Rakamın yanındaki birim yazısı. */}
+          {/* Para birimini gösteren daha küçük metin */}
           <Text style={styles.paraBirimi}>TL</Text>
         </View>
 
-        {/* Rakamın altındaki soluk açıklama. */}
+        {/* Miktarın altındaki soluk açıklama metni */}
         <Text style={styles.altAciklama}>
           Ocak ayında harcanan toplam tutar
         </Text>
 
-        {/* PROGRES METİNLERİ: Yüzde ve limit bilgisini iki uca yayan kutu. */}
+        {/* İlerleme durumu (Progress) metin alanı */}
         <View style={styles.progresMetinKutusu}>
-          {/* Sol uçtaki yüzde bilgisi. */}
+          {/* Bütçenin doluluk oranını söyleyen yüzde */}
           <Text style={styles.progresYuzde}>BÜTÇENİN %81'İ</Text>
-          {/* Sağ uçtaki toplam limit bilgisi. */}
+          {/* Toplam bütçe limitini gösteren yeşil metin */}
           <Text style={styles.progresLimit}>18.000 TL bütçe</Text>
         </View>
 
-        {/* ÇUBUK ZEMİNİ: İlerleme barının gri arka planı. */}
+        {/* Çubuğun arkasındaki gri zemin kutusu */}
         <View style={styles.cubukZemin}>
-          {/* YEŞİL DOLGU: Harcama oranına göre dolan parlak kısım. */}
+          {/* Çubuğun içindeki yeşil dolgu alanı */}
           <LinearGradient
-            /* Dolgunun içindeki iki tonlu yeşil geçiş. */
+            /* Parlak yeşilden koyu yeşile geçiş. */
             colors={["#1DB954", "#15A344"]}
-            /* Geçiş soldan sağa doğru aksın. */
+            /* Geçişin soldan sağa doğru olmasını sağlar. */
             start={{ x: 0, y: 0.5 }}
             end={{ x: 1, y: 0.5 }}
-            /* Genişlik %81, köşeler ve parlama ayarları. */
+            /* Genişlik %81, köşeler ve parlamayı stil olarak veriyoruz. */
             style={[styles.cubukDolgu, { width: "81%" }, styles.cubukParlamasi]}
           />
         </View>
 
-        {/* İSTATİSTİK ALANI: Ok işaretleri ve karşılaştırmalı veriler. */}
+        {/* İstatistik oklarını (artış ve kalan) tutan satır */}
         <View style={styles.istatistikKutusu}>
-          {/* SOL ÖGE: Artış miktarını gösteren ikonlu grup. */}
+          {/* Sol taraftaki artış bilgisi */}
           <View style={styles.istatistikOgesi}>
-            {/* Yeşil yukarı ok ikonu. */}
+            {/* Yukarı yönlü yeşil grafik oku */}
             <Ionicons name="trending-up" size={16} color="#1DB954" />
-            {/* Artış yüzdesi metni. */}
             <Text style={styles.istatistikYazisi}>Geçen aya göre +12%</Text>
           </View>
-
-          {/* SAĞ ÖGE: Kalan parayı gösteren ikonlu grup. */}
+          {/* Sağ taraftaki kalan bütçe bilgisi */}
           <View style={styles.istatistikOgesi}>
-            {/* Kırmızı aşağı ok ikonu. */}
+            {/* Aşağı yönlü kırmızı grafik oku */}
             <Ionicons name="trending-down" size={16} color="#FF6B6B" />
-            {/* Kalan tutar metni. */}
             <Text style={styles.istatistikYazisi}>3.420 TL kaldı</Text>
           </View>
         </View>
       </LinearGradient>
-    </View>
+
+      {/* 3. HIZLI AKSİYONLAR BÖLÜMÜ */}
+      <View style={styles.butonlarSatiri}>
+        {/* Harcama Ekle: Kamera ikonlu buton */}
+        <TouchableOpacity style={styles.butonGrup} activeOpacity={0.7}>
+          {/* Butonun içindeki yeşilimsi renk geçişli yuvarlak */}
+          <LinearGradient
+            colors={["rgba(29, 185, 84, 0.25)", "rgba(29, 185, 84, 0.1)"]}
+            style={styles.yuvarlakButon}
+          >
+            {/* Fiş tarama hissi veren kamera ikonu */}
+            <Ionicons name="camera-outline" size={26} color="#1DB954" />
+          </LinearGradient>
+          {/* Butonun altındaki açıklama yazısı */}
+          <Text style={styles.butonMetni}>Harcama Ekle</Text>
+        </TouchableOpacity>
+
+        {/* Geçmişi Gör: Saat ikonlu buton */}
+        <TouchableOpacity style={styles.butonGrup} activeOpacity={0.7}>
+          {/* Siyah/gri yuvarlak arka plan */}
+          <View style={styles.yuvarlakButonSiyah}>
+            <Ionicons
+              name="time-outline"
+              size={24}
+              color="rgba(255,255,255,0.8)"
+            />
+          </View>
+          <Text style={styles.butonMetni}>Geçmişi Gör</Text>
+        </TouchableOpacity>
+
+        {/* Analiz: Pasta grafiği ikonlu buton */}
+        <TouchableOpacity style={styles.butonGrup} activeOpacity={0.7}>
+          {/* Siyah/gri yuvarlak arka plan */}
+          <View style={styles.yuvarlakButonSiyah}>
+            <Ionicons
+              name="pie-chart-outline"
+              size={24}
+              color="rgba(255,255,255,0.8)"
+            />
+          </View>
+          <Text style={styles.butonMetni}>Analiz</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* 4. SON HARCAMALAR BAŞLIĞI */}
+      <View style={styles.listeBaslikSatiri}>
+        {/* 'Son Harcamalar' ana başlığı */}
+        <Text style={styles.listeBasligi}>Son Harcamalar</Text>
+        {/* 'Tümü >' butonu */}
+        <TouchableOpacity style={styles.tumuButonKapsayici} activeOpacity={0.6}>
+          <Text style={styles.tumuButonu}>Tümü</Text>
+          <Ionicons name="chevron-forward" size={14} color="#1DB954" />
+        </TouchableOpacity>
+      </View>
+
+      {/* 5. HARCAMA LİSTESİ */}
+      <View style={styles.listeKutusu}>
+        {/* MİGROS SATIRI */}
+        <TouchableOpacity style={styles.harcamaOgesi} activeOpacity={0.7}>
+          {/* Kurumsal renkli (Yeşil) logo zemini */}
+          <View style={[styles.ikonZemini, { backgroundColor: "#1DB954" }]}>
+            <Text style={styles.ikonHarf}>M</Text>
+          </View>
+          {/* İsim ve kategori bilgisi */}
+          <View style={styles.harcamaBilgi}>
+            <Text style={styles.harcamaAd}>Migros</Text>
+            <Text style={styles.harcamaKategori}>Market · 28 Eki</Text>
+          </View>
+          {/* SAĞ TARAF: Fiyat üstte, Ok işareti altta */}
+          <View style={styles.fiyatVeOkKapsayici}>
+            <Text style={styles.harcamaTutar}>-289,50 TL</Text>
+            <Ionicons
+              name="chevron-forward"
+              size={12}
+              color="rgba(255,255,255,0.25)"
+            />
+          </View>
+        </TouchableOpacity>
+
+        {/* STARBUCKS SATIRI */}
+        <TouchableOpacity style={styles.harcamaOgesi} activeOpacity={0.7}>
+          {/* Kurumsal renkli (Koyu Yeşil) logo zemini */}
+          <View style={[styles.ikonZemini, { backgroundColor: "#00704A" }]}>
+            <Text style={styles.ikonHarf}>S</Text>
+          </View>
+          {/* İsim ve kategori bilgisi */}
+          <View style={styles.harcamaBilgi}>
+            <Text style={styles.harcamaAd}>Starbucks</Text>
+            <Text style={styles.harcamaKategori}>Kafe · 27 Eki</Text>
+          </View>
+          {/* SAĞ TARAF: Fiyat üstte, Ok işareti altta */}
+          <View style={styles.fiyatVeOkKapsayici}>
+            <Text style={styles.harcamaTutar}>-124,00 TL</Text>
+            <Ionicons
+              name="chevron-forward"
+              size={12}
+              color="rgba(255,255,255,0.25)"
+            />
+          </View>
+        </TouchableOpacity>
+      </View>
+
+      {/* ScrollView sonunda içerik bitince ferah bir boşluk */}
+      <View style={{ height: 40 }} />
+    </ScrollView>
   );
 }
 
-// STİL DOSYASI: Tasarım özelliklerinin tek tek tanımlandığı yer.
+/* TASARIM (CSS) BÖLÜMÜ */
 const styles = StyleSheet.create({
   anaEkran: {
-    // Tüm ekranı kapla.
+    // Tüm ekranı kapla (Flexbox mantığı).
     flex: 1,
     // Arka plan rengini siyah yap.
     backgroundColor: "#000000",
-    // Sağ ve soldan 20 birim iç boşluk bırak.
+    // Yanlardan 20 birim iç boşluk bırak.
     paddingHorizontal: 20,
-    // Üstteki saat kısmından 60 birim aşağı in.
+    // Üstten 60 birim boşluk bırak.
     paddingTop: 60,
   },
   ustBilgiKutusu: {
-    // İçindekileri yan yana (yatay) diz.
+    // İçindeki elemanları yan yana diz.
     flexDirection: "row",
-    // Elemanları iki uca yasla, arayı aç.
+    // Elemanları iki uca yasla (Biri tam sol, biri tam sağ).
     justifyContent: "space-between",
-    // Elemanları dikeyde birbirine göre ortala.
+    // Dikeyde birbirine göre ortala.
     alignItems: "center",
-    // Altındaki karta 30 birim uzaklaş.
+    // Altındaki bütçe kartına 30 birim uzaklaş.
     marginBottom: 30,
   },
   merhabaYazisi: {
-    // %45 opaklıkta beyaz renk ver.
+    // Saydam beyaz renk ver.
     color: "rgba(255, 255, 255, 0.45)",
-    // Metin boyutunu 13 yap.
+    // Font boyutunu 13 yap.
     fontSize: 13,
-    // Yazı kalınlığını normal (ince) tut.
+    // Yazıyı normal kalınlıkta (400) tut.
     fontWeight: "400",
-    // Harfler arasına 0.5 birim boşluk koy.
+    // Harfler arasına 0.5 boşluk koy.
     letterSpacing: 0.5,
   },
   isimYazisi: {
     // Tam beyaz renk ver.
     color: "white",
-    // Metin boyutunu 24 yap.
+    // Font boyutunu 24 yaparak büyüt.
     fontSize: 24,
-    // Yazıyı kalın (bold) yap.
+    // Yazıyı kalın yap.
     fontWeight: "700",
   },
   profilIkonu: {
@@ -152,165 +259,295 @@ const styles = StyleSheet.create({
     width: 42,
     // Kutu yüksekliğini 42 yap.
     height: 42,
-    // %6 opaklıkta beyaz arka plan ver.
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    // Saydam beyaz arka plan ver.
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
     // Köşeleri 14 birim yuvarlat.
     borderRadius: 14,
-    // 1 birim kalınlığında çerçeve çiz.
+    // Kenarlık kalınlığı 1.
     borderWidth: 1,
-    // Çerçevenin rengini %8 opaklıkta beyaz yap.
-    borderColor: "rgba(255, 255, 255, 0.08)",
-    // İkonu yatayda ortala.
+    // Kenarlık rengini çok hafif saydam yap.
+    borderColor: "rgba(255, 255, 255, 0.12)",
+    // İkonu kutunun tam ortasına hizala (Yatay).
     justifyContent: "center",
-    // İkonu dikeyde ortala.
+    // İkonu kutunun tam ortasına hizala (Dikey).
     alignItems: "center",
   },
   aktifNoktasi: {
-    // Genişlik 8 birim.
+    // Genişlik ve yükseklik 8.
     width: 8,
-    // Yükseklik 8 birim.
     height: 8,
-    // Neon yeşil renk.
+    // Neon yeşil renk ver.
     backgroundColor: "#1DB954",
     // Tam yuvarlak olması için yarıçap ver.
     borderRadius: 4,
-    // Diğer elemanları ezerek serbest konuma geç.
+    // İkonun üzerine uçması için pozisyonu mutlak (Absolute) yap.
     position: "absolute",
-    // Yukarıdan 8 birim aşağı kaydır.
+    // Üstten 8 birim aşağı kaydır.
     top: 8,
     // Sağdan 10 birim sola kaydır.
     right: 10,
-    // 1.5 birim kalınlığında çerçeve.
+    // Nokta etrafına siyah sınır çizgisi ekle.
     borderWidth: 1.5,
-    // Çerçeveyi siyah yaparak ayrıştır.
     borderColor: "#000000",
   },
   butceKarti: {
-    // Köşeleri 24 birim yumuşat.
+    // Kartın köşelerini 24 birim yumuşat.
     borderRadius: 24,
-    // 1 birim çerçeve kalınlığı.
+    // Hafif yeşil kenarlık çizgisi ekle.
     borderWidth: 1,
-    // Çerçeveyi çok hafif bir yeşil yap.
     borderColor: "rgba(29, 185, 84, 0.20)",
-    // Kartın içindeki ögelere 24 birim boşluk ver.
+    // Kart içindeki elemanlara 24 birim boşluk ver.
     padding: 24,
+    // Yeşil neon gölge rengini seç.
+    shadowColor: "#1DB954",
+    // Gölge saydamlığını ayarla.
+    shadowOpacity: 0.15,
+    // Gölgenin yayılma yumuşaklığını ver.
+    shadowRadius: 20,
+    // Android sisteminde gölgeyi görünür yap.
+    elevation: 10,
   },
   kartBaslik: {
-    // Metin rengini %50 opaklıkta beyaz yap.
+    // %50 saydam beyaz.
     color: "rgba(255, 255, 255, 0.50)",
-    // Boyut 11 birim.
+    // Boyutu 11 yap.
     fontSize: 11,
     // Yarı kalın font seç.
     fontWeight: "600",
-    // Harf aralığını geniş tut (1.5).
+    // Harf aralığını genişlet.
     letterSpacing: 1.5,
-    // Altındaki rakama 8 birim uzaklaş.
+    // Altındaki paraya 8 birim mesafe koy.
     marginBottom: 8,
   },
   paraKutusu: {
-    // Sayı ve TL'yi yan yana diz.
+    // Miktar ve TL'yi yan yana diz.
     flexDirection: "row",
-    // İki metnin alt çizgisini hizala.
+    // Yazıları alt taban çizgisine göre hizala.
     alignItems: "baseline",
-    // Altındaki metne 4 birim uzaklaş.
+    // Alttaki açıklamaya 4 birim mesafe koy.
     marginBottom: 4,
   },
   paraMiktari: {
     // Beyaz renk.
     color: "white",
-    // Büyük boy font (38).
+    // Devasa boyut (38).
     fontSize: 38,
-    // En kalın font ağırlığı.
+    // En kalın yazı stili.
     fontWeight: "800",
   },
   paraBirimi: {
-    // %60 opaklıkta beyaz renk.
+    // %60 saydam beyaz.
     color: "rgba(255, 255, 255, 0.60)",
-    // 20 birim boyut.
+    // Rakamın yanında daha küçük (20) kalsın.
     fontSize: 20,
-    // Rakamın sağında 6 birim boşluk bırak.
+    // Orta kalınlık.
+    fontWeight: "500",
+    // Rakamla arasına 6 birim boşluk bırak.
     marginLeft: 6,
   },
   altAciklama: {
-    // %35 opaklıkta soluk beyaz.
+    // Çok soluk beyaz.
     color: "rgba(255, 255, 255, 0.35)",
-    // 12 birim boyut.
     fontSize: 12,
-    // Altındaki progres bara 24 birim uzaklaş.
+    // Progress bara 24 birim uzaklaş.
     marginBottom: 24,
   },
   progresMetinKutusu: {
-    // Yazıları yan yana diz.
+    // Metinleri iki uca yasla.
     flexDirection: "row",
-    // İki yazı arasına maksimum boşluk koy.
     justifyContent: "space-between",
-    // Dikeyde ortala.
     alignItems: "center",
     // Altındaki çubuğa 8 birim uzaklaş.
     marginBottom: 8,
   },
   progresYuzde: {
-    // %50 opak beyaz.
+    // %50 saydam beyaz.
     color: "rgba(255, 255, 255, 0.50)",
-    // 11 birim boyut.
     fontSize: 11,
-    // Harf aralığı 1 birim.
     letterSpacing: 1,
   },
   progresLimit: {
-    // Vurgulu neon yeşil renk.
+    // Vurgulu yeşil renk.
     color: "#1DB954",
-    // 11 birim boyut.
     fontSize: 11,
-    // Kalın font.
     fontWeight: "600",
   },
   cubukZemin: {
-    // Çubuk yüksekliği 6 birim.
+    // Çubuğun yüksekliği 6.
     height: 6,
-    // %10 opak beyaz zemin.
+    // %10 saydam beyaz (Gri görünür).
     backgroundColor: "rgba(255, 255, 255, 0.10)",
-    // Yuvarlak köşeler.
+    // Köşeleri yuvarlat.
     borderRadius: 3,
-    // İçteki taşmaları kes.
+    // İçindeki taşmaları gizle.
     overflow: "hidden",
   },
   cubukDolgu: {
-    // Zemini dikeyde tam doldur.
+    // Zemin yüksekliğini tam kapla.
     height: "100%",
-    // Yuvarlak köşeler.
+    // Köşeleri yuvarlat.
     borderRadius: 3,
   },
   cubukParlamasi: {
-    // Gölge rengi yeşil.
+    // Neon yeşil gölge.
     shadowColor: "#1DB954",
-    // Gölgeyi yayma oranı (Android/iOS ortak ayar).
     shadowOpacity: 0.5,
-    // Gölge yumuşaklığı.
     shadowRadius: 10,
-    // Android için gölge derinliği.
     elevation: 5,
   },
   istatistikKutusu: {
-    // Grupları yan yana diz.
+    // Verileri yan yana diz.
     flexDirection: "row",
-    // Üstteki çubuğa 16 birim uzaklaş.
+    // Üstteki çubuğa mesafe.
     marginTop: 16,
-    // Gruplar arası 16 birim boşluk bırak.
+    // Elemanlar arası boşluk.
     gap: 16,
   },
   istatistikOgesi: {
     // İkon ve yazıyı yan yana diz.
     flexDirection: "row",
-    // Dikeyde ortala.
     alignItems: "center",
-    // İkon ve yazı arası 6 birim boşluk.
     gap: 6,
   },
   istatistikYazisi: {
-    // %50 opak beyaz.
+    // %50 saydam beyaz.
     color: "rgba(255, 255, 255, 0.50)",
-    // 11 birim boyut.
     fontSize: 11,
+  },
+  butonlarSatiri: {
+    // Üç butonu yan yana diz.
+    flexDirection: "row",
+    // Aralarını eşit mesafede aç.
+    justifyContent: "space-between",
+    // Üstteki karta mesafe.
+    marginTop: 30,
+    // Alt başlığa mesafe.
+    marginBottom: 30,
+  },
+  butonGrup: {
+    // Elemanları merkezde topla.
+    alignItems: "center",
+    gap: 8,
+    // Sayfada eşit pay almalarını sağla.
+    flex: 1,
+  },
+  yuvarlakButon: {
+    // Butonun çapını belirle.
+    width: 58,
+    height: 58,
+    // Köşeleri tam yuvarlak yap.
+    borderRadius: 29,
+    // İkonu tam merkeze koy.
+    justifyContent: "center",
+    alignItems: "center",
+    // İnce kenarlık çizgisi.
+    borderWidth: 1,
+    borderColor: "rgba(29, 185, 84, 0.35)",
+  },
+  yuvarlakButonSiyah: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    // Mobilde görünürlük için %8 saydamlık.
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.15)",
+  },
+  butonMetni: {
+    // %60 saydam beyaz.
+    color: "rgba(255, 255, 255, 0.6)",
+    fontSize: 11,
+    fontWeight: "500",
+  },
+  listeBaslikSatiri: {
+    // Başlık ve 'Tümü' linkini yan yana diz.
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    // Listeye olan mesafe.
+    marginBottom: 15,
+  },
+  listeBasligi: {
+    // Tam beyaz ve büyük.
+    color: "white",
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  tumuButonKapsayici: {
+    // Yazı ve oku yan yana getir.
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  tumuButonu: {
+    // Parlak yeşil.
+    color: "#1DB954",
+    fontSize: 14,
+    fontWeight: "600",
+    // Ok işaretiyle arasına boşluk bırak.
+    marginRight: 4,
+  },
+  listeKutusu: {
+    // Her harcama satırı arasına 12 birim boşluk.
+    gap: 12,
+  },
+  harcamaOgesi: {
+    // İkon, Bilgi ve Fiyatı yan yana diz.
+    flexDirection: "row",
+    alignItems: "center",
+    // Mobilde görünürlük için %12 opaklık.
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    // İç boşluk 14.
+    padding: 14,
+    // Köşeleri yumuşat.
+    borderRadius: 16,
+    // Belirgin kenarlık çizgisi.
+    borderWidth: 1.5,
+    borderColor: "rgba(255, 255, 255, 0.20)",
+  },
+  ikonZemini: {
+    // Logonun arkasındaki kutunun boyutu.
+    width: 42,
+    height: 42,
+    borderRadius: 13,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  ikonHarf: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  harcamaBilgi: {
+    // Kalan tüm alanı kaplayarak fiyatı sağa iter.
+    flex: 1,
+    // Logodan uzaklaş.
+    marginLeft: 12,
+  },
+  harcamaAd: {
+    color: "white",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  harcamaKategori: {
+    // Soluk kategori ismi.
+    color: "rgba(255, 255, 255, 0.4)",
+    fontSize: 12,
+    marginTop: 2,
+  },
+  // Fiyat ve oku dikeyde (Alt alta) ve en sağda (End) hizalar.
+  fiyatVeOkKapsayici: {
+    flexDirection: "column",
+    alignItems: "flex-end",
+    justifyContent: "center",
+  },
+  harcamaTutar: {
+    // Beyaz ve kalın fiyat.
+    color: "white",
+    fontSize: 14,
+    fontWeight: "700",
+    // Ok işaretiyle arasına minik mesafe.
+    marginBottom: 4,
   },
 });
