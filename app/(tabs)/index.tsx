@@ -1,5 +1,7 @@
 /* GEREKLİ ARAÇLARIN İÇERİ AKTARILMASI */
 import {
+  // Gölge efektini iOS ve Android için ayrı ayrı ayarlamamızı sağlar.
+  Platform,
   // Sayfa içeriğinin (ScrollView gibi) dikeyde kaymasını sağlar.
   ScrollView,
   // CSS benzeri stil kurallarını yazdığımız JavaScript nesnesi.
@@ -165,8 +167,14 @@ export default function HomeScreen() {
       <View style={styles.listeKutusu}>
         {/* MİGROS SATIRI */}
         <TouchableOpacity style={styles.harcamaOgesi} activeOpacity={0.7}>
-          {/* Kurumsal renkli (Yeşil) logo zemini */}
-          <View style={[styles.ikonZemini, { backgroundColor: "#1DB954" }]}>
+          {/* Kurumsal renkli logo zemini + Figma Neon Gölgesi */}
+          <View
+            style={[
+              styles.ikonZemini,
+              { backgroundColor: "#1DB954" },
+              styles.migrosNeonGolge,
+            ]}
+          >
             <Text style={styles.ikonHarf}>M</Text>
           </View>
           {/* İsim ve kategori bilgisi */}
@@ -187,8 +195,14 @@ export default function HomeScreen() {
 
         {/* STARBUCKS SATIRI */}
         <TouchableOpacity style={styles.harcamaOgesi} activeOpacity={0.7}>
-          {/* Kurumsal renkli (Koyu Yeşil) logo zemini */}
-          <View style={[styles.ikonZemini, { backgroundColor: "#00704A" }]}>
+          {/* Kurumsal renkli logo zemini + Figma Neon Gölgesi */}
+          <View
+            style={[
+              styles.ikonZemini,
+              { backgroundColor: "#00704A" },
+              styles.starbucksNeonGolge,
+            ]}
+          >
             <Text style={styles.ikonHarf}>S</Text>
           </View>
           {/* İsim ve kategori bilgisi */}
@@ -220,7 +234,7 @@ const styles = StyleSheet.create({
     // Tüm ekranı kapla (Flexbox mantığı).
     flex: 1,
     // Arka plan rengini siyah yap.
-    backgroundColor: "#000000",
+    backgroundColor: "#121212",
     // Yanlardan 20 birim iç boşluk bırak.
     paddingHorizontal: 20,
     // Üstten 60 birim boşluk bırak.
@@ -291,21 +305,28 @@ const styles = StyleSheet.create({
     borderColor: "#000000",
   },
   butceKarti: {
-    // Kartın köşelerini 24 birim yumuşat.
     borderRadius: 24,
-    // Hafif yeşil kenarlık çizgisi ekle.
     borderWidth: 1,
-    borderColor: "rgba(29, 185, 84, 0.20)",
-    // Kart içindeki elemanlara 24 birim boşluk ver.
+    borderColor: "rgba(29, 185, 84, 0.20)", // Figma'daki 20% yeşil çerçeve
     padding: 24,
-    // Yeşil neon gölge rengini seç.
-    shadowColor: "#1DB954",
-    // Gölge saydamlığını ayarla.
-    shadowOpacity: 0.15,
-    // Gölgenin yayılma yumuşaklığını ver.
-    shadowRadius: 20,
-    // Android sisteminde gölgeyi görünür yap.
-    elevation: 10,
+
+    // Figma'daki 'Inner shadow' (İç Gölge) efekti: Üstten minik beyaz parlama
+    borderTopWidth: 1.5,
+    borderTopColor: "rgba(255, 255, 255, 0.06)", // Beyaz %6
+
+    // Figma'daki 'Drop shadow' (Dış Neon Gölge) ayarları
+    ...Platform.select({
+      ios: {
+        shadowColor: "#1DB954",
+        shadowOffset: { width: 0, height: 8 }, // Y: 8
+        shadowRadius: 32, // Blur: 32
+        shadowOpacity: 0.12, // %12 Opaklık
+      },
+      android: {
+        elevation: 12, // Android'de neon derinliği
+        shadowColor: "#1DB954",
+      },
+    }),
   },
   kartBaslik: {
     // %50 saydam beyaz.
@@ -391,6 +412,7 @@ const styles = StyleSheet.create({
   cubukParlamasi: {
     // Neon yeşil gölge.
     shadowColor: "#1DB954",
+    shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.5,
     shadowRadius: 10,
     elevation: 5,
@@ -497,14 +519,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     // Mobilde görünürlük için %12 opaklık.
-    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
     // İç boşluk 14.
     padding: 14,
     // Köşeleri yumuşat.
     borderRadius: 16,
     // Belirgin kenarlık çizgisi.
     borderWidth: 1.5,
-    borderColor: "rgba(255, 255, 255, 0.20)",
+    borderColor: "rgba(255, 255, 255, 0.08)",
   },
   ikonZemini: {
     // Logonun arkasındaki kutunun boyutu.
@@ -549,5 +571,37 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     // Ok işaretiyle arasına minik mesafe.
     marginBottom: 4,
+  },
+
+  // Figma'daki Migros (M) Harfi Neon Gölgesi
+  migrosNeonGolge: {
+    ...Platform.select({
+      ios: {
+        shadowColor: "#1DB954", // Figma'daki gölge rengi
+        shadowOffset: { width: 0, height: 4 }, // Y: 4
+        shadowOpacity: 0.25, // 25% Opaklık
+        shadowRadius: 12, // Blur: 12
+      },
+      android: {
+        elevation: 8, // Android için derinlik
+        shadowColor: "#1DB954", // Android gölge rengi
+      },
+    }),
+  },
+
+  // Figma'daki Starbucks (S) Harfi Neon Gölgesi
+  starbucksNeonGolge: {
+    ...Platform.select({
+      ios: {
+        shadowColor: "#00704A", // Starbucks koyu yeşili
+        shadowOffset: { width: 0, height: 4 }, // Y: 4
+        shadowOpacity: 0.25, // 25% Opaklık
+        shadowRadius: 12, // Blur: 12
+      },
+      android: {
+        elevation: 8, // Android için derinlik
+        shadowColor: "#00704A", // Android gölge rengi
+      },
+    }),
   },
 });
