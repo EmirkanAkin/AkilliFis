@@ -8,7 +8,7 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: "#000000",
+          backgroundColor: "#1E1E1EF2",
           borderTopWidth: 1,
           borderTopColor: "#1A1A1A",
           height: 70, // Menü yüksekliğini rahat bıraktık

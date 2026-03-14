@@ -1,13 +1,13 @@
 /* GEREKLİ ARAÇLAR */
 import { Ionicons } from "@expo/vector-icons";
 import {
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput, // 🔥 YENİ: Arama çubuğu için eklendi
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 export default function HarcamalarScreen() {
@@ -21,6 +21,7 @@ export default function HarcamalarScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* 🔥 YENİ: ARAMA KUTUSU */}
       <View style={styles.aramaKutusuKapsayici}>
         <Ionicons
           name="search-outline"
@@ -238,7 +239,7 @@ export default function HarcamalarScreen() {
               styles.migrosNeonGolge,
             ]}
           >
-            <Text style={styles.ikonHarf}>S</Text>
+            <Text style={styles.ikonHarf}>Sp</Text>
           </View>
           <View style={styles.harcamaBilgi}>
             <Text style={styles.harcamaAd}>Spotify</Text>
@@ -295,6 +296,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255, 255, 255, 0.1)",
   },
 
+  // 🔥 YENİ: ARAMA KUTUSU STİLLERİ
   aramaKutusuKapsayici: {
     flexDirection: "row",
     alignItems: "center",
@@ -463,14 +465,15 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   fiyatVeOkKapsayici: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
+    flexDirection: "column",
+    alignItems: "flex-end",
+    justifyContent: "center",
   },
   harcamaTutar: {
     color: "#FF6B6B",
     fontSize: 14,
     fontWeight: "700",
+    marginBottom: 4,
   },
 
   // NEON GÖLGELER
@@ -499,7 +502,7 @@ const styles = StyleSheet.create({
   trendyolNeonGolge: {
     ...Platform.select({
       ios: {
-        shadowColor: "#FF6B6B",
+        shadowColor: "#FF6B6B", // Turuncu düzeltmesini bir önceki adımda konuşmuştuk, burada güncel tuttum.
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.25,
         shadowRadius: 12,
