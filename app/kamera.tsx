@@ -1,28 +1,24 @@
-/* app/kamera.tsx */
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import React, { useEffect, useRef } from "react";
 import {
-    Animated,
-    Dimensions,
-    Easing,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Animated,
+  Dimensions,
+  Easing,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 const { width } = Dimensions.get("window");
 
 export default function KameraScreen() {
   const router = useRouter();
-
-  // 🔥 Lazer çizgisinin aşağı-yukarı kayma animasyonu
   const scanAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // 0'dan 250'ye gidip (aşağı inip) geri dönen sonsuz bir döngü
     Animated.loop(
       Animated.sequence([
         Animated.timing(scanAnim, {
@@ -43,7 +39,7 @@ export default function KameraScreen() {
 
   return (
     <View style={styles.anaEkran}>
-      {/* 1. ÜST BAR */}
+      {/* ÜST BAR */}
       <View style={styles.ustBar}>
         <TouchableOpacity
           style={styles.ikonButon}
@@ -65,57 +61,61 @@ export default function KameraScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* 2. ORTA BİLGİ METİNLERİ */}
       <Text style={styles.bilgiMetin}>
         Fiş veya faturayı çerçeve içine hizalayın
       </Text>
 
-      {/* 3. TARAYICI ÇERÇEVESİ (VIZÖR) */}
+      {/* VİZÖR (TARAYICI) */}
       <View style={styles.vizorKapsayici}>
-        {/* Sol Üst Köşe */}
         <View style={[styles.kose, styles.koseSolUst]} />
-        {/* Sağ Üst Köşe */}
         <View style={[styles.kose, styles.koseSagUst]} />
-        {/* Sol Alt Köşe */}
         <View style={[styles.kose, styles.koseSolAlt]} />
-        {/* Sağ Alt Köşe */}
         <View style={[styles.kose, styles.koseSagAlt]} />
 
-        {/* 🔥 HAREKETLİ LAZER ÇİZGİSİ */}
         <Animated.View
           style={[styles.lazerCizgi, { transform: [{ translateY: scanAnim }] }]}
         />
 
-        {/* Fişi Buraya Hizalayın Rozeti */}
         <View style={styles.rozetKapsayici}>
           <Text style={styles.rozetMetin}>Fişi Buraya Hizalayın</Text>
         </View>
       </View>
 
-      {/* 4. ALT BİLGİ METNİ */}
       <View style={styles.altBilgiKapsayici}>
-        <Text style={styles.altBilgiMetin}>Işığı iyi olan bir ortamda</Text>
+        <Text style={styles.altBilgiMetin}>
+          Otomatik algılama aktif · Işığı iyi olan bir ortamda
+        </Text>
         <Text style={styles.altBilgiMetin}>çekim yapın</Text>
       </View>
 
-      {/* 5. ALT KONTROL BAR'I (Gradient Arka Planlı) */}
+      {/* ALT KONTROL BARI */}
       <LinearGradient
         colors={["transparent", "rgba(0,0,0,0.8)", "#000000"]}
         style={styles.altKontrolBari}
       >
+        {/* Sol Buton: Galeri */}
         <TouchableOpacity style={styles.yanButon}>
           <Ionicons name="image-outline" size={24} color="white" />
         </TouchableOpacity>
 
-        {/* BÜYÜK DEKLANŞÖR BUTONU */}
-        <TouchableOpacity style={styles.cekimButonu} activeOpacity={0.8}>
+        {/* Orta Buton: Çekim */}
+        <TouchableOpacity
+          style={styles.cekimButonu}
+          activeOpacity={0.8}
+          onPress={() => router.push("/fisdogrulama")}
+        >
           <View style={styles.cekimButonuIc}>
             <Ionicons name="camera" size={28} color="#121212" />
           </View>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.yanButon}>
-          <Ionicons name="flash-outline" size={24} color="white" />
+        {/* 🔥 Sağ Buton: YENİ MANUEL GİRİŞ BUTONU */}
+        <TouchableOpacity
+          style={styles.manuelButon}
+          activeOpacity={0.8}
+          onPress={() => router.push("/manuelfis")}
+        >
+          <Ionicons name="pencil-outline" size={22} color="#1DB954" />
         </TouchableOpacity>
       </LinearGradient>
     </View>
@@ -123,18 +123,13 @@ export default function KameraScreen() {
 }
 
 const styles = StyleSheet.create({
-  anaEkran: {
-    flex: 1,
-    backgroundColor: "#0A0A0A",
-  },
-
-  // ÜST BAR
+  anaEkran: { flex: 1, backgroundColor: "#0A0A0A" },
   ustBar: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 20,
-    paddingTop: 60, // Çentik boşluğu
+    paddingTop: 60,
     marginBottom: 40,
   },
   ikonButon: {
@@ -155,36 +150,25 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.1)",
   },
-  baslikMetin: {
-    color: "white",
-    fontSize: 13,
-    fontWeight: "600",
-  },
-
-  // ORTA METİNLER
+  baslikMetin: { color: "white", fontSize: 13, fontWeight: "600" },
   bilgiMetin: {
     color: "rgba(255, 255, 255, 0.45)",
     fontSize: 13,
     textAlign: "center",
     marginBottom: 40,
   },
-  altBilgiKapsayici: {
-    marginTop: 60,
-    alignItems: "center",
-  },
+  altBilgiKapsayici: { marginTop: 60, alignItems: "center" },
   altBilgiMetin: {
     color: "rgba(255, 255, 255, 0.3)",
     fontSize: 12,
     lineHeight: 18,
   },
 
-  // VİZÖR (TARAMA ÇERÇEVESİ)
   vizorKapsayici: {
-    width: width * 0.75, // Ekran genişliğinin %75'i
+    width: width * 0.75,
     height: 300,
     alignSelf: "center",
     position: "relative",
-    // İçine tatlı bir yeşil glow veriyoruz
     backgroundColor: "rgba(29, 185, 84, 0.02)",
     borderRadius: 16,
   },
@@ -227,8 +211,6 @@ const styles = StyleSheet.create({
     borderRightWidth: 3,
     borderBottomRightRadius: 16,
   },
-
-  // LAZER ÇİZGİSİ
   lazerCizgi: {
     width: "90%",
     height: 2,
@@ -242,7 +224,6 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
   },
-
   rozetKapsayici: {
     position: "absolute",
     bottom: 20,
@@ -254,13 +235,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(29, 185, 84, 0.40)",
   },
-  rozetMetin: {
-    color: "#1DB954",
-    fontSize: 11,
-    fontWeight: "600",
-  },
+  rozetMetin: { color: "#1DB954", fontSize: 11, fontWeight: "600" },
 
-  // ALT KONTROL BAR'I
   altKontrolBari: {
     position: "absolute",
     bottom: 0,
@@ -305,5 +281,17 @@ const styles = StyleSheet.create({
     borderColor: "#121212",
     justifyContent: "center",
     alignItems: "center",
+  },
+
+  // 🔥 YENİ MANUEL BUTON STİLİ
+  manuelButon: {
+    width: 50,
+    height: 50,
+    backgroundColor: "rgba(29, 185, 84, 0.15)",
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(29, 185, 84, 0.30)",
   },
 });

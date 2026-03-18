@@ -10,11 +10,9 @@ import {
   View,
 } from "react-native";
 
-// 🔥 YENİ EKLEDİĞİMİZ SAYFA DEĞİŞTİRME MOTORU
 import { useRouter } from "expo-router";
 
 export default function HomeScreen() {
-  // 🔥 MOTORU ÇALIŞTIRIYORUZ
   const router = useRouter();
 
   return (
@@ -129,7 +127,6 @@ export default function HomeScreen() {
 
       {/* 5. HARCAMA LİSTESİ */}
       <View style={styles.listeKutusu}>
-        {/* 🔥 MİGROS SATIRI (ÜRÜN DETAY SAYFASINA GİDER) */}
         <TouchableOpacity
           style={styles.harcamaOgesi}
           activeOpacity={0.7}
