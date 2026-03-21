@@ -92,7 +92,6 @@ export default function ProfilScreen() {
             18.000 <Text style={styles.butceParaBirimi}>TL</Text>
           </Text>
         </View>
-        {/*  İŞTE İSTEDİĞİN O KARELİ KALEM İKONU (YEŞİL) */}
         <Ionicons name="create-outline" size={24} color="#1DB954" />
       </TouchableOpacity>
 

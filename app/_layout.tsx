@@ -30,37 +30,32 @@ export default function RootLayout() {
           contentStyle: { backgroundColor: "#0A0A0A" },
         }}
       >
-        <Stack.Screen name="ilkgiris" options={{ headerShown: false }} />
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="ilkgiris" />
+        <Stack.Screen name="ilkgiris-butce" />
+        <Stack.Screen name="(tabs)" />
         <Stack.Screen
           name="kamera"
           options={{ presentation: "modal", animation: "slide_from_bottom" }}
         />
-        <Stack.Screen name="urundetay" options={{ headerShown: false }} />
-        <Stack.Screen name="fisdogrulama" options={{ headerShown: false }} />
+        <Stack.Screen name="urundetay" />
+        <Stack.Screen name="fisdogrulama" />
         <Stack.Screen
           name="manuelfis"
           options={{ presentation: "modal", animation: "slide_from_bottom" }}
         />
-
-        {/* 🔥 BÜTÇE MODALI */}
         <Stack.Screen
           name="butcemodal"
           options={{
             presentation: "transparentModal",
-            animation: "fade", // Yavaşça karararak açılır
-            headerShown: false,
-            contentStyle: { backgroundColor: "rgba(0,0,0,0.5)" }, // Arka planı karanlık tül yapar
+            animation: "fade",
+            contentStyle: { backgroundColor: "rgba(0,0,0,0.5)" },
           }}
         />
-
-        {/* 🔥 YENİ EKLENEN İSİM MODALI */}
         <Stack.Screen
           name="isimmodal"
           options={{
             presentation: "transparentModal",
             animation: "fade",
-            headerShown: false,
             contentStyle: { backgroundColor: "rgba(0,0,0,0.5)" },
           }}
         />

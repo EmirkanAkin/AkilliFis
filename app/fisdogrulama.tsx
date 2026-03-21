@@ -3,12 +3,12 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import React from "react";
 import {
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 export default function FisDogrulamaScreen() {
@@ -74,7 +74,7 @@ export default function FisDogrulamaScreen() {
                   <Text style={styles.bilgiMetin}>Migros T.A.Ş.</Text>
                 </View>
                 <Ionicons
-                  name="pencil-outline"
+                  name="create-outline"
                   size={14}
                   color="rgba(255, 255, 255, 0.35)"
                 />
@@ -89,7 +89,7 @@ export default function FisDogrulamaScreen() {
                   <Text style={styles.bilgiMetin}>28.10.2023</Text>
                 </View>
                 <Ionicons
-                  name="pencil-outline"
+                  name="create-outline"
                   size={14}
                   color="rgba(255, 255, 255, 0.35)"
                 />

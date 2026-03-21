@@ -1,22 +1,21 @@
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-    Animated,
-    Keyboard,
-    Platform,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    TouchableWithoutFeedback,
-    View,
+  Animated,
+  Keyboard,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  View,
 } from "react-native";
 
 export default function IsimDuzenleModal() {
   const router = useRouter();
   const [isim, setIsim] = useState("");
 
-  // 🔥 BÜYÜK SİLAH: Klavyenin boyunu anlık ölçecek animasyon motoru
   const [klavyeBoslugu] = useState(new Animated.Value(0));
 
   useEffect(() => {

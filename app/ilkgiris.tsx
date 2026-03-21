@@ -2,15 +2,15 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
-    Keyboard,
-    KeyboardAvoidingView,
-    Platform,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    TouchableWithoutFeedback,
-    View,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  View,
 } from "react-native";
 
 export default function OnboardingScreen() {
@@ -18,9 +18,7 @@ export default function OnboardingScreen() {
   const [isim, setIsim] = useState("");
 
   const devamEt = () => {
-    // İleride burada ismi telefona (AsyncStorage) kaydedeceğiz.
-    // Şimdilik sadece Ana Sayfaya (tabs) geçiriyoruz.
-    router.replace("/(tabs)");
+    router.push("/ilkgiris-butce");
   };
 
   return (
@@ -30,6 +28,16 @@ export default function OnboardingScreen() {
     >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
         <View style={styles.icerik}>
+          <View style={styles.ustBar}>
+            <View style={styles.ilerlemeKapsayici}>
+              {/* 1. Adım (Şu an buradayız, uzun aktif yeşil çizgi) */}
+              <View style={styles.ilerlemeCizgisiAktif} />
+              {/* 2. Adım (Henüz geçmedik, küçük pasif nokta) */}
+              <View style={styles.ilerlemeNoktasiPasif} />
+            </View>
+            <Text style={styles.adimMetni}>Adım 1/2</Text>
+          </View>
+
           <View style={styles.ustBosluk} />
 
           {/* 1. LOGO VE MARKA ALANI */}
@@ -85,15 +93,47 @@ export default function OnboardingScreen() {
 }
 
 const styles = StyleSheet.create({
+  // Arka planı Bütçe ekranıyla aynı zifiri siyaha çektik
   anaEkran: {
     flex: 1,
-    backgroundColor: "#0A0A0A",
+    backgroundColor: "#121212",
   },
   icerik: {
     flex: 1,
     paddingHorizontal: 24,
-    justifyContent: "center",
+    paddingTop: 60, // Bütçe ekranıyla aynı hizada başlaması için
   },
+
+  ustBar: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  ilerlemeKapsayici: { flexDirection: "row", gap: 8, alignItems: "center" },
+  ilerlemeCizgisiAktif: {
+    width: 16,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#1DB954",
+    shadowColor: "#1DB954",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6,
+    shadowRadius: 12,
+    elevation: 5,
+  },
+  ilerlemeNoktasiPasif: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+  },
+  adimMetni: {
+    color: "rgba(255, 255, 255, 0.40)",
+    fontSize: 13,
+    fontWeight: "500",
+  },
+
   ustBosluk: { flex: 0.5 },
   altBosluk: { flex: 1 },
 
@@ -161,7 +201,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   inputZemin: {
-    backgroundColor: "#18181B",
+    backgroundColor: "rgba(255, 255, 255, 0.04)", // Bütçe kartıyla aynı zemin rengi
     borderRadius: 16,
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.08)",

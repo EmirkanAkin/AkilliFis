@@ -109,13 +109,12 @@ export default function KameraScreen() {
           </View>
         </TouchableOpacity>
 
-        {/* 🔥 Sağ Buton: YENİ MANUEL GİRİŞ BUTONU */}
         <TouchableOpacity
           style={styles.manuelButon}
           activeOpacity={0.8}
           onPress={() => router.push("/manuelfis")}
         >
-          <Ionicons name="pencil-outline" size={22} color="#1DB954" />
+          <Ionicons name="create-outline" size={22} color="#1DB954" />
         </TouchableOpacity>
       </LinearGradient>
     </View>
@@ -283,7 +282,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
-  // 🔥 YENİ MANUEL BUTON STİLİ
   manuelButon: {
     width: 50,
     height: 50,

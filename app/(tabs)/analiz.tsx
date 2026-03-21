@@ -1,12 +1,10 @@
-/* app/(tabs)/analiz.tsx */
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
-import React, { useCallback, useRef, useState } from "react"; // 🔥 useState eklendi
+import React, { useCallback, useRef, useState } from "react";
 import {
   Animated,
   Easing,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -21,23 +19,33 @@ const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 export default function AnalizScreen() {
   const circumference = 2 * Math.PI * 70;
   const animValue = useRef(new Animated.Value(0)).current;
+  const scrollRef = useRef<ScrollView>(null);
 
-  // 🔥 Hangi sütunun seçili olduğunu hafızada tutuyoruz
+  // Veri kontrolü: [] boş, [1] dolu
+  const [harcamalar, setHarcamalar] = useState([]);
   const [seciliBar, setSeciliBar] = useState<number | null>(null);
 
+  // Sayfaya her girildiğinde çalışan efekt
   useFocusEffect(
     useCallback(() => {
-      animValue.setValue(0);
-      Animated.timing(animValue, {
-        toValue: -circumference,
-        duration: 1500,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
-      }).start();
+      // Sayfayı en yukarıya çek
+      scrollRef.current?.scrollTo({ y: 0, animated: false });
+
+      // Pasta grafik animasyonu (eğer veri varsa)
+      if (harcamalar.length > 0) {
+        animValue.setValue(0);
+        Animated.timing(animValue, {
+          toValue: -circumference,
+          duration: 1500,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: false,
+        }).start();
+      }
       return () => {};
-    }, [animValue, circumference]),
+    }, [animValue, circumference, harcamalar]),
   );
 
+  // Veri Tanımlamaları
   const segments = [
     { color: "#3B82F6", percent: 0.35, ad: "Temizlik", tutar: "1200" },
     { color: "#8B5CF6", percent: 0.08, ad: "Diğer", tutar: "270" },
@@ -46,7 +54,6 @@ export default function AnalizScreen() {
     { color: "#1DB954", percent: 0.25, ad: "Sebze/Meyve", tutar: "850" },
   ];
 
-  // 🔥 Günlük harcamalara fiyat (tutar) eklendi
   const haftalikVeriler = [
     { gun: "Pzt", h: "45%", tutar: "210" },
     { gun: "Sal", h: "60%", tutar: "340" },
@@ -57,6 +64,106 @@ export default function AnalizScreen() {
     { gun: "Paz", h: "50%", tutar: "280" },
   ];
 
+  // 1. SENARYO: ANALİZ VERİSİ YOKSA (BOŞ EKRAN)
+  if (harcamalar.length === 0) {
+    return (
+      <ScrollView
+        ref={scrollRef}
+        style={styles.anaEkran}
+        contentContainerStyle={styles.scrollIcerikBos}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.headerKapsayici}>
+          <Text style={styles.ustBaslik}>ANALİZ</Text>
+          <Text style={styles.sayfaBaslik}>İstatistikler</Text>
+        </View>
+
+        <View style={styles.ortaIcerikBos}>
+          <View style={styles.merkezGrafikKapsayici}>
+            <View style={styles.daireDis}>
+              <View style={styles.daireIc}>
+                <View style={styles.daireMerkez}>
+                  <Ionicons
+                    name="pie-chart-outline"
+                    size={32}
+                    color="rgba(255,255,255,0.15)"
+                  />
+                </View>
+              </View>
+              <View style={[styles.ucusanIkon, { top: -10, right: 10 }]}>
+                <Ionicons
+                  name="trending-up"
+                  size={18}
+                  color="rgba(255,255,255,0.2)"
+                />
+              </View>
+              <View style={[styles.ucusanIkon, { bottom: 10, left: 10 }]}>
+                <Ionicons
+                  name="bar-chart-outline"
+                  size={18}
+                  color="rgba(255,255,255,0.2)"
+                />
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.mesajKapsayiciBos}>
+            <Text style={styles.baslikMetniBos}>
+              Analiz için yeterli veri yok
+            </Text>
+            <Text style={styles.aciklamaMetniBos}>
+              En az bir fiş taradıktan sonra grafikler burada görünecek
+            </Text>
+          </View>
+
+          <View style={styles.kartlarKapsayiciBos}>
+            <View style={styles.bilgiKartiBos}>
+              <View style={styles.ikonZeminBos}>
+                <Ionicons name="pie-chart" size={20} color="#1DB954" />
+              </View>
+              <View>
+                <Text style={styles.kartBaslikBos}>Kategori Dağılımı</Text>
+                <Text style={styles.kartAltBos}>
+                  Harcamalarını kategorilere göre gör
+                </Text>
+              </View>
+            </View>
+            <View style={styles.bilgiKartiBos}>
+              <View style={styles.ikonZeminBos}>
+                <Ionicons name="stats-chart" size={20} color="#1DB954" />
+              </View>
+              <View>
+                <Text style={styles.kartBaslikBos}>Harcama Trendleri</Text>
+                <Text style={styles.kartAltBos}>
+                  Günlük, aylık ve yıllık analiz
+                </Text>
+              </View>
+            </View>
+            <View style={styles.bilgiKartiBos}>
+              <View style={styles.ikonZeminBos}>
+                <Ionicons name="document-text" size={20} color="#1DB954" />
+              </View>
+              <View>
+                <Text style={styles.kartBaslikBos}>Detaylı Raporlar</Text>
+                <Text style={styles.kartAltBos}>
+                  Tasarruf önerileri ve içgörüler
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.ipucuKutusuBos}>
+            <Text style={styles.ipucuMetniBos}>
+              💡 İlk fişini tarayarak analizleri aktifleştir
+            </Text>
+          </View>
+        </View>
+        <View style={{ height: 100 }} />
+      </ScrollView>
+    );
+  }
+
+  // 2. SENARYO: VERİ VARSA (DOLU EKRAN)
   let currentOffset = 0;
   const pieData = segments.map((seg) => {
     const length = seg.percent * circumference;
@@ -93,7 +200,12 @@ export default function AnalizScreen() {
   );
 
   return (
-    <ScrollView style={styles.anaEkran} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      ref={scrollRef}
+      style={styles.anaEkran}
+      contentContainerStyle={{ paddingTop: 60 }}
+      showsVerticalScrollIndicator={false}
+    >
       <View style={styles.headerKapsayici}>
         <Text style={styles.ustBaslik}>ANALİZ</Text>
         <Text style={styles.sayfaBaslik}>
@@ -198,48 +310,21 @@ export default function AnalizScreen() {
               <Text style={styles.legendMetin}>Kafe (13%)</Text>
             </View>
           </View>
-          <View style={styles.legendSatir}>
-            <View style={styles.legendOge}>
-              <View style={[styles.nokta, { backgroundColor: "#8B5CF6" }]} />
-              <Text style={styles.legendMetin}>Diğer (8%)</Text>
-            </View>
-          </View>
         </View>
       </View>
 
       <View style={styles.kartKapsayici}>
         <Text style={styles.kartBaslikKucuk}>KATEGORİ DAĞILIMI</Text>
         <View style={{ marginTop: 12, gap: 12 }}>
-          <KategoriBar
-            color="#1DB954"
-            title="Sebze/Meyve"
-            amount="850"
-            percent="25%"
-          />
-          <KategoriBar
-            color="#3B82F6"
-            title="Temizlik"
-            amount="1200"
-            percent="35%"
-          />
-          <KategoriBar
-            color="#F59E0B"
-            title="Meyve/İçecek"
-            amount="680"
-            percent="20%"
-          />
-          <KategoriBar
-            color="#EF4444"
-            title="Kafe"
-            amount="450"
-            percent="13%"
-          />
-          <KategoriBar
-            color="#8B5CF6"
-            title="Diğer"
-            amount="270"
-            percent="8%"
-          />
+          {segments.map((s, i) => (
+            <KategoriBar
+              key={i}
+              color={s.color}
+              title={s.ad}
+              amount={s.tutar}
+              percent={`${s.percent * 100}%`}
+            />
+          ))}
         </View>
       </View>
 
@@ -251,22 +336,18 @@ export default function AnalizScreen() {
             return (
               <Pressable
                 key={index}
-                // Tıklandığında kendi hafızasına indeks numarasını yazar
                 onPress={() => setSeciliBar(isSelected ? null : index)}
-                // Seçili olan en öne (zIndex: 10) çıkar ki tooltip kesilmesin
                 style={[
                   styles.barSutun,
                   isSelected && styles.barSutunSecili,
                   { zIndex: isSelected ? 10 : 1 },
                 ]}
               >
-                {/* 🔥 TIKLANDIĞINDA ÇIKACAK TOOLTIP KUTUCUĞU */}
                 {isSelected && (
                   <View style={styles.tooltipKutu}>
                     <Text style={styles.tooltipMetin}>{item.tutar} TL</Text>
                   </View>
                 )}
-
                 <View style={styles.barAlan}>
                   <View style={[styles.barDolgu, { height: item.h as any }]} />
                 </View>
@@ -276,17 +357,13 @@ export default function AnalizScreen() {
           })}
         </View>
       </View>
+      <View style={{ height: 40 }} />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  anaEkran: {
-    flex: 1,
-    backgroundColor: "#0A0A0A",
-    paddingHorizontal: 20,
-    paddingTop: 60,
-  },
+  anaEkran: { flex: 1, backgroundColor: "#0A0A0A", paddingHorizontal: 20 },
   headerKapsayici: { marginBottom: 24 },
   ustBaslik: {
     color: "rgba(255, 255, 255, 0.40)",
@@ -303,6 +380,101 @@ const styles = StyleSheet.create({
   },
   isimVurgu: { color: "#1DB954" },
 
+  scrollIcerikBos: { paddingHorizontal: 20, paddingTop: 60 },
+  ortaIcerikBos: { flex: 1, alignItems: "center" },
+  merkezGrafikKapsayici: {
+    height: 180,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 30,
+  },
+  daireDis: {
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    borderStyle: "dashed",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  daireIc: {
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    backgroundColor: "rgba(255,255,255,0.02)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  daireMerkez: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: "#121212",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.05)",
+  },
+  ucusanIkon: {
+    position: "absolute",
+    backgroundColor: "rgba(255,255,255,0.05)",
+    padding: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+  mesajKapsayiciBos: { alignItems: "center", gap: 12, marginBottom: 32 },
+  baslikMetniBos: {
+    color: "white",
+    fontSize: 20,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  aciklamaMetniBos: {
+    color: "rgba(255, 255, 255, 0.40)",
+    fontSize: 14,
+    fontWeight: "400",
+    textAlign: "center",
+    maxWidth: 280,
+    lineHeight: 22,
+  },
+  kartlarKapsayiciBos: { width: "100%", gap: 12, marginBottom: 32 },
+  bilgiKartiBos: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 16,
+    backgroundColor: "rgba(255, 255, 255, 0.03)",
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.06)",
+  },
+  ikonZeminBos: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "rgba(29, 185, 84, 0.1)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  kartBaslikBos: { color: "white", fontSize: 14, fontWeight: "600" },
+  kartAltBos: {
+    color: "rgba(255, 255, 255, 0.35)",
+    fontSize: 11,
+    marginTop: 2,
+  },
+  ipucuKutusuBos: {
+    width: "100%",
+    padding: 16,
+    borderRadius: 16,
+    backgroundColor: "rgba(29, 185, 84, 0.05)",
+    borderWidth: 1,
+    borderColor: "rgba(29, 185, 84, 0.15)",
+    alignItems: "center",
+  },
+  ipucuMetniBos: { color: "rgba(255, 255, 255, 0.5)", fontSize: 12 },
+
   kupaKarti: {
     flexDirection: "row",
     alignItems: "center",
@@ -311,7 +483,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(29, 185, 84, 0.20)",
     marginBottom: 20,
-    overflow: "hidden",
   },
   kupaIkon: { fontSize: 24, marginRight: 12 },
   kupaMetinAlani: { flex: 1 },
@@ -321,7 +492,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 2,
   },
-
   zamanSekmeleri: {
     flexDirection: "row",
     backgroundColor: "rgba(255, 255, 255, 0.05)",
@@ -330,7 +500,6 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.08)",
-    overflow: "hidden",
   },
   sekmeInaktif: {
     flex: 1,
@@ -345,29 +514,17 @@ const styles = StyleSheet.create({
     borderRadius: 11,
     justifyContent: "center",
     alignItems: "center",
-    ...Platform.select({
-      ios: {
-        shadowColor: "#1DB954",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.25,
-        shadowRadius: 12,
-      },
-      android: { elevation: 8, shadowColor: "#1DB954" },
-    }),
+    elevation: 8,
+    shadowColor: "#1DB954",
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
   },
   sekmeMetinInaktif: {
     color: "rgba(255, 255, 255, 0.40)",
     fontSize: 10,
     fontWeight: "500",
-    letterSpacing: 0.5,
   },
-  sekmeMetinAktif: {
-    color: "white",
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 0.5,
-  },
-
+  sekmeMetinAktif: { color: "white", fontSize: 10, fontWeight: "700" },
   kartKapsayici: {
     backgroundColor: "#18181B",
     borderRadius: 24,
@@ -375,7 +532,6 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255, 255, 255, 0.07)",
     padding: 20,
     marginBottom: 20,
-    overflow: "visible",
   },
   kartHeader: {
     flexDirection: "row",
@@ -386,7 +542,6 @@ const styles = StyleSheet.create({
     color: "rgba(255, 255, 255, 0.40)",
     fontSize: 10,
     letterSpacing: 1,
-    marginBottom: 4,
   },
   kartBuyukTutar: { color: "white", fontSize: 22, fontWeight: "800" },
   yuzdeRozeti: {
@@ -396,46 +551,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "rgba(29, 185, 84, 0.20)",
     gap: 4,
-    overflow: "hidden",
   },
   yuzdeRozetMetni: { color: "#1DB954", fontSize: 12, fontWeight: "600" },
-
   grafikAlani: {
     alignItems: "center",
     justifyContent: "center",
     marginVertical: 20,
     height: 200,
   },
-  pieMerkez: {
-    position: "absolute",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  pieMerkezUst: {
-    color: "rgba(255, 255, 255, 0.40)",
-    fontSize: 11,
-    letterSpacing: 0.5,
-  },
-  pieMerkezMiktar: {
-    color: "white",
-    fontSize: 17,
-    fontWeight: "800",
-    marginVertical: 2,
-  },
+  pieMerkez: { position: "absolute", alignItems: "center" },
+  pieMerkezUst: { color: "rgba(255, 255, 255, 0.40)", fontSize: 11 },
+  pieMerkezMiktar: { color: "white", fontSize: 17, fontWeight: "800" },
   pieMerkezTL: { color: "#1DB954", fontSize: 11, fontWeight: "600" },
   legendKapsayici: { gap: 10 },
   legendSatir: { flexDirection: "row", gap: 16 },
   legendOge: { flexDirection: "row", alignItems: "center", gap: 6 },
   nokta: { width: 8, height: 8, borderRadius: 2 },
   legendMetin: { color: "rgba(255, 255, 255, 0.55)", fontSize: 11 },
-
   kartBaslikKucuk: {
     color: "rgba(255, 255, 255, 0.40)",
     fontSize: 12,
-    fontWeight: "400",
     letterSpacing: 1,
   },
   kategoriBarKapsayici: { gap: 6 },
@@ -446,31 +582,24 @@ const styles = StyleSheet.create({
     height: 4,
     backgroundColor: "rgba(255, 255, 255, 0.08)",
     borderRadius: 2,
-    overflow: "hidden",
   },
   kategoriBarDolgu: { height: "100%", borderRadius: 2 },
-
   barChartKapsayici: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-end",
-    height: 120, // 🔥 Tooltip taşmasın diye yükselttik
+    height: 120,
     marginTop: 20,
-    paddingHorizontal: 0,
   },
-  // 🔥 Her bir günün kendi çerçevesi
   barSutun: {
     alignItems: "center",
-    width: 40, // Tıklama alanı ve arka plan boyutu
+    width: 40,
     height: 120,
     justifyContent: "flex-end",
     paddingBottom: 6,
     borderRadius: 8,
   },
-  // 🔥 Seçildiğinde beliren soluk gri dikdörtgen arka plan
-  barSutunSecili: {
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
-  },
+  barSutunSecili: { backgroundColor: "rgba(255, 255, 255, 0.05)" },
   barAlan: {
     height: 80,
     width: 20,
@@ -484,8 +613,6 @@ const styles = StyleSheet.create({
     opacity: 0.85,
   },
   barGun: { color: "rgba(255, 255, 255, 0.40)", fontSize: 11 },
-
-  // 🔥 ÇIKAN YENİ FİYAT BALONCUĞU (TOOLTIP)
   tooltipKutu: {
     position: "absolute",
     top: -15,
@@ -496,18 +623,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.15)",
-    alignItems: "center",
-    // Sağa sola taşması için sabit genişlik
     width: 65,
-    ...Platform.select({
-      ios: {
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 6,
-      },
-      android: { elevation: 6 },
-    }),
+    elevation: 6,
   },
   tooltipMetin: { color: "white", fontSize: 11, fontWeight: "700" },
 });
