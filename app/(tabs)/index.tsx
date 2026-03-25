@@ -17,7 +17,7 @@ export default function HomeScreen() {
   const scrollRef = useRef<ScrollView>(null);
 
   // Veri Kontrolü: [] boş ekranı, [1] dolu ekranı tetikler
-  const [harcamalar, setHarcamalar] = useState([]);
+  const [harcamalar, setHarcamalar] = useState([1]);
   const [aylikButce, setAylikButce] = useState(18000);
 
   // Sekme değiştirip geri gelindiğinde sayfayı en yukarı sıfırlar

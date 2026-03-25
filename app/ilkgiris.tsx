@@ -1,10 +1,11 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   Keyboard,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   StyleSheet,
   Text,
   TextInput,
@@ -16,6 +17,8 @@ import {
 export default function OnboardingScreen() {
   const router = useRouter();
   const [isim, setIsim] = useState("");
+  const [odaklandiMi, setOdaklandiMi] = useState(false);
+  const inputRef = useRef<TextInput>(null);
 
   const devamEt = () => {
     router.push("/ilkgiris-butce");
@@ -30,9 +33,7 @@ export default function OnboardingScreen() {
         <View style={styles.icerik}>
           <View style={styles.ustBar}>
             <View style={styles.ilerlemeKapsayici}>
-              {/* 1. Adım (Şu an buradayız, uzun aktif yeşil çizgi) */}
               <View style={styles.ilerlemeCizgisiAktif} />
-              {/* 2. Adım (Henüz geçmedik, küçük pasif nokta) */}
               <View style={styles.ilerlemeNoktasiPasif} />
             </View>
             <Text style={styles.adimMetni}>Adım 1/2</Text>
@@ -62,17 +63,31 @@ export default function OnboardingScreen() {
 
           {/* 3. İSİM GİRİŞ FORMU */}
           <View style={styles.formKapsayici}>
-            <Text style={styles.inputEtiket}>Sana nasıl hitap edelim?</Text>
-            <View style={styles.inputZemin}>
+            <Text
+              style={[styles.inputEtiket, odaklandiMi && { color: "#1DB954" }]}
+            >
+              Sana nasıl hitap edelim?
+            </Text>
+
+            <Pressable
+              style={[styles.inputZemin, odaklandiMi && styles.inputOdakli]}
+              onPress={() => inputRef.current?.focus()}
+            >
               <TextInput
+                ref={inputRef}
                 style={styles.inputGirdi}
                 placeholder="İsminizi girin"
-                placeholderTextColor="rgba(255, 255, 255, 0.50)"
+                placeholderTextColor="rgba(255, 255, 255, 0.30)"
                 value={isim}
                 onChangeText={setIsim}
+                onFocus={() => setOdaklandiMi(true)}
+                onBlur={() => setOdaklandiMi(false)}
+                selectionColor="#1DB954"
+                cursorColor="#1DB954"
+                autoCapitalize="words" // Her kelime büyük başlar
                 returnKeyType="done"
               />
-            </View>
+            </Pressable>
           </View>
 
           <View style={styles.altBosluk} />
@@ -84,7 +99,14 @@ export default function OnboardingScreen() {
             onPress={devamEt}
             disabled={isim.trim() === ""}
           >
-            <Text style={styles.butonMetin}>Devam Et</Text>
+            <Text
+              style={[
+                styles.butonMetin,
+                isim.trim() === "" && { color: "rgba(255, 255, 255, 0.3)" },
+              ]}
+            >
+              Devam Et
+            </Text>
           </TouchableOpacity>
         </View>
       </TouchableWithoutFeedback>
@@ -93,17 +115,8 @@ export default function OnboardingScreen() {
 }
 
 const styles = StyleSheet.create({
-  // Arka planı Bütçe ekranıyla aynı zifiri siyaha çektik
-  anaEkran: {
-    flex: 1,
-    backgroundColor: "#121212",
-  },
-  icerik: {
-    flex: 1,
-    paddingHorizontal: 24,
-    paddingTop: 60, // Bütçe ekranıyla aynı hizada başlaması için
-  },
-
+  anaEkran: { flex: 1, backgroundColor: "#121212" },
+  icerik: { flex: 1, paddingHorizontal: 24, paddingTop: 60 },
   ustBar: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -133,15 +146,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "500",
   },
-
   ustBosluk: { flex: 0.5 },
   altBosluk: { flex: 1 },
-
-  // LOGO STİLLERİ
-  logoKapsayici: {
-    alignItems: "center",
-    marginBottom: 60,
-  },
+  logoKapsayici: { alignItems: "center", marginBottom: 60 },
   logoKutu: {
     width: 80,
     height: 80,
@@ -155,11 +162,7 @@ const styles = StyleSheet.create({
     shadowRadius: 32,
     elevation: 10,
   },
-  logoMetin: {
-    color: "white",
-    fontSize: 36,
-    fontWeight: "800",
-  },
+  logoMetin: { color: "white", fontSize: 36, fontWeight: "800" },
   markaIsim: {
     color: "white",
     fontSize: 32,
@@ -171,12 +174,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "400",
   },
-
-  // KARŞILAMA METNİ STİLLERİ
-  karsilamaKapsayici: {
-    alignItems: "center",
-    marginBottom: 40,
-  },
+  karsilamaKapsayici: { alignItems: "center", marginBottom: 40 },
   merhabaMetin: {
     color: "white",
     fontSize: 28,
@@ -188,11 +186,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "400",
   },
-
-  // FORM STİLLERİ
-  formKapsayici: {
-    marginBottom: 24,
-  },
+  formKapsayici: { marginBottom: 24 },
   inputEtiket: {
     color: "rgba(255, 255, 255, 0.45)",
     fontSize: 12,
@@ -200,8 +194,9 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
     marginBottom: 8,
   },
+
   inputZemin: {
-    backgroundColor: "rgba(255, 255, 255, 0.04)", // Bütçe kartıyla aynı zemin rengi
+    backgroundColor: "#18181B",
     borderRadius: 16,
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.08)",
@@ -209,14 +204,18 @@ const styles = StyleSheet.create({
     height: 58,
     justifyContent: "center",
   },
+  inputOdakli: {
+    borderColor: "#1DB954",
+    borderWidth: 1.5,
+    backgroundColor: "rgba(29, 185, 84, 0.05)",
+  },
   inputGirdi: {
     color: "white",
     fontSize: 16,
     fontWeight: "500",
-    height: "100%",
+    padding: 0, // Şişme önleyici
   },
 
-  // BUTON STİLLERİ
   buton: {
     backgroundColor: "#1DB954",
     borderRadius: 16,
@@ -224,13 +223,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 40,
+    shadowColor: "#1DB954",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 8,
   },
   butonPasif: {
-    backgroundColor: "rgba(29, 185, 84, 0.25)",
+    backgroundColor: "rgba(29, 185, 84, 0.15)",
+    shadowOpacity: 0,
+    elevation: 0,
   },
-  butonMetin: {
-    color: "white",
-    fontSize: 16,
-    fontWeight: "700",
-  },
+  butonMetin: { color: "white", fontSize: 16, fontWeight: "700" },
 });

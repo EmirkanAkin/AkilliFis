@@ -1,18 +1,31 @@
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import React from "react";
+import React, { useState } from "react";
 import {
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 export default function UrunDetayiScreen() {
   const router = useRouter();
+
+  const [duzenleModalAcik, setDuzenleModalAcik] = useState(false);
+
+  // Düzenlenebilir örnek ürün listesi state'i
+  const [duzenlenenUrunler, setDuzenlenenUrunler] = useState([
+    { id: 1, isim: "Elma 1kg", fiyat: "30,50" },
+    { id: 2, isim: "Süt 1L", fiyat: "25,00" },
+    { id: 3, isim: "Ekmek", fiyat: "8,50" },
+    { id: 4, isim: "Peynir 500g", fiyat: "89,90" },
+  ]);
 
   const kategoriler = [
     {
@@ -70,6 +83,36 @@ export default function UrunDetayiScreen() {
       ],
     },
   ];
+
+  // Ürün ismini güncelleme
+  const isimGuncelle = (text: string, id: number) => {
+    setDuzenlenenUrunler((prev) =>
+      prev.map((urun) => (urun.id === id ? { ...urun, isim: text } : urun)),
+    );
+  };
+
+  // Ürün fiyatını güncelleme
+  const fiyatGuncelle = (text: string, id: number) => {
+    const safRakam = text.replace(/[^0-9,]/g, "");
+    setDuzenlenenUrunler((prev) =>
+      prev.map((urun) =>
+        urun.id === id ? { ...urun, fiyat: safRakam } : urun,
+      ),
+    );
+  };
+
+  // Ürünü listeden silme
+  const urunSil = (id: number) => {
+    setDuzenlenenUrunler((prev) => prev.filter((urun) => urun.id !== id));
+  };
+
+  const yeniUrunEkle = () => {
+    const yeniId = Date.now(); // Benzersiz rastgele ID
+    setDuzenlenenUrunler([
+      ...duzenlenenUrunler,
+      { id: yeniId, isim: "", fiyat: "" },
+    ]);
+  };
 
   return (
     <View style={styles.anaEkran}>
@@ -179,9 +222,13 @@ export default function UrunDetayiScreen() {
         ))}
       </ScrollView>
 
-      {/* 5. ALT SABİT BUTONLAR */}
+      {/* ALT SABİT BUTON */}
       <View style={styles.altButonlarKapsayici}>
-        <TouchableOpacity style={styles.altButonTekli} activeOpacity={0.7}>
+        <TouchableOpacity
+          style={styles.altButonTekli}
+          activeOpacity={0.7}
+          onPress={() => setDuzenleModalAcik(true)}
+        >
           <Ionicons
             name="pencil-outline"
             size={16}
@@ -190,6 +237,110 @@ export default function UrunDetayiScreen() {
           <Text style={styles.altButonMetin}>Harcamayı Düzenle</Text>
         </TouchableOpacity>
       </View>
+
+      <Modal
+        visible={duzenleModalAcik}
+        transparent={true}
+        animationType="slide"
+      >
+        <KeyboardAvoidingView
+          style={styles.modalArkaPlan}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <View style={styles.modalKutu}>
+            {/* Tutamaç */}
+            <View style={styles.tutuamacKapsayici}>
+              <View style={styles.tutuamac} />
+            </View>
+
+            {/* Başlık ve Kapat Butonu */}
+            <View style={styles.modalUstBar}>
+              <Text style={styles.modalBaslik}>Ürünleri Düzenle</Text>
+              <TouchableOpacity
+                style={styles.kapatIkonZemini}
+                onPress={() => setDuzenleModalAcik(false)}
+              >
+                <Ionicons
+                  name="close"
+                  size={18}
+                  color="rgba(255,255,255,0.7)"
+                />
+              </TouchableOpacity>
+            </View>
+
+            {/* Ürün Listesi */}
+            <ScrollView
+              style={styles.duzenleListe}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              {duzenlenenUrunler.map((urun) => (
+                <View key={urun.id} style={styles.duzenleSatiri}>
+                  {/* İsmi */}
+                  <View style={styles.urunIsimInputZemini}>
+                    <TextInput
+                      style={styles.urunIsimInput}
+                      value={urun.isim}
+                      onChangeText={(text) => isimGuncelle(text, urun.id)}
+                      selectionColor="#1DB954"
+                      cursorColor="#1DB954"
+                      placeholder="Ürün adı"
+                      placeholderTextColor="rgba(255,255,255,0.2)"
+                    />
+                  </View>
+
+                  {/* Fiyatı */}
+                  <View style={styles.urunFiyatInputZemini}>
+                    <TextInput
+                      style={styles.urunFiyatInput}
+                      value={urun.fiyat}
+                      onChangeText={(text) => fiyatGuncelle(text, urun.id)}
+                      keyboardType="decimal-pad"
+                      selectionColor="#1DB954"
+                      cursorColor="#1DB954"
+                      placeholder="0,00"
+                      placeholderTextColor="rgba(29, 185, 84, 0.3)"
+                    />
+                    <Text style={styles.urunFiyatParaBirimi}>TL</Text>
+                  </View>
+
+                  {/* Sil Butonu */}
+                  <TouchableOpacity
+                    style={styles.urunSilButonu}
+                    onPress={() => urunSil(urun.id)}
+                  >
+                    <Ionicons name="trash-outline" size={16} color="#FF6B6B" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+
+              <TouchableOpacity
+                style={styles.yeniUrunEkleZemini}
+                activeOpacity={0.7}
+                onPress={yeniUrunEkle}
+              >
+                <Ionicons name="add" size={18} color="#1DB954" />
+                <Text style={styles.yeniUrunEkleMetni}>Yeni Ürün Ekle</Text>
+              </TouchableOpacity>
+
+              <View style={{ height: 20 }} />
+            </ScrollView>
+
+            {/* Kaydet Butonu */}
+            <View style={styles.modalAltButonKapsayici}>
+              <TouchableOpacity
+                style={styles.degisiklikleriKaydetButonu}
+                activeOpacity={0.8}
+                onPress={() => setDuzenleModalAcik(false)}
+              >
+                <Text style={styles.degisiklikleriKaydetMetni}>
+                  Değişiklikleri Kaydet
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -384,7 +535,6 @@ const styles = StyleSheet.create({
     fontWeight: "400",
   },
 
-  // ALT SABİT BUTON
   altButonlarKapsayici: {
     position: "absolute",
     bottom: 20,
@@ -410,5 +560,169 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     letterSpacing: 0.5,
+  },
+
+  modalArkaPlan: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
+  },
+  modalKutu: {
+    backgroundColor: "#18181B",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 24,
+    maxHeight: "85%",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
+    elevation: 20,
+  },
+  tutuamacKapsayici: {
+    alignItems: "center",
+    paddingTop: 12,
+    marginBottom: 16,
+  },
+  tutuamac: {
+    width: 36,
+    height: 4,
+    backgroundColor: "rgba(255, 255, 255, 0.20)",
+    borderRadius: 10,
+  },
+  modalUstBar: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  modalBaslik: {
+    color: "white",
+    fontSize: 18,
+    fontFamily: "Inter",
+    fontWeight: "700",
+  },
+  kapatIkonZemini: {
+    width: 32,
+    height: 32,
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    borderRadius: 10,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  duzenleListe: {
+    flexGrow: 0,
+    maxHeight: 400,
+  },
+  duzenleSatiri: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+    gap: 12,
+  },
+  urunIsimInputZemini: {
+    flex: 1,
+    height: 52,
+    backgroundColor: "#0A0A0A",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.10)",
+    justifyContent: "center",
+    paddingHorizontal: 16,
+  },
+  urunIsimInput: {
+    color: "rgba(255, 255, 255, 0.7)",
+    fontSize: 14,
+    fontFamily: "Inter",
+    fontWeight: "500",
+    padding: 0,
+  },
+  urunFiyatInputZemini: {
+    width: 100,
+    height: 52,
+    backgroundColor: "#0A0A0A",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(29, 185, 84, 0.20)",
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    gap: 6,
+  },
+  urunFiyatInput: {
+    flex: 1,
+    color: "rgba(29, 185, 84, 0.70)",
+    fontSize: 15,
+    fontFamily: "Inter",
+    fontWeight: "700",
+    textAlign: "right",
+    padding: 0,
+  },
+  urunFiyatParaBirimi: {
+    color: "#1DB954",
+    fontSize: 12,
+    fontFamily: "Inter",
+    fontWeight: "600",
+  },
+  urunSilButonu: {
+    width: 40,
+    height: 40,
+    backgroundColor: "rgba(255, 107, 107, 0.08)",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255, 107, 107, 0.15)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  yeniUrunEkleZemini: {
+    height: 52,
+    backgroundColor: "rgba(29, 185, 84, 0.06)",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(29, 185, 84, 0.30)",
+    flexDirection: "row", // Yan yana dizilim
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 4,
+    gap: 6, // İkon ve yazı arası boşluk
+  },
+  yeniUrunEkleMetni: {
+    color: "#1DB954",
+    fontSize: 14,
+    fontFamily: "Inter",
+    fontWeight: "600",
+    letterSpacing: 0.2,
+  },
+
+  modalAltButonKapsayici: {
+    paddingVertical: 20,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255, 255, 255, 0.06)",
+    marginTop: 10,
+    marginBottom: Platform.OS === "ios" ? 20 : 10,
+  },
+  degisiklikleriKaydetButonu: {
+    width: "100%",
+    height: 60,
+    borderRadius: 16,
+    backgroundColor: "#1DB954",
+    shadowColor: "#1DB954",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 24,
+    elevation: 8,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  degisiklikleriKaydetMetni: {
+    color: "white",
+    fontSize: 16,
+    fontFamily: "Inter",
+    fontWeight: "700",
+    letterSpacing: 0.3,
   },
 });
