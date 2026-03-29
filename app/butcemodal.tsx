@@ -1,121 +1,108 @@
 import { useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import {
-  Animated,
   Keyboard,
+  KeyboardAvoidingView,
   Platform,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   TouchableWithoutFeedback,
-  View,
+  View
 } from "react-native";
+
+import { useStore } from "../store/useStore";
 
 export default function ButceBelirleModal() {
   const router = useRouter();
-  const [butce, setButce] = useState("");
 
-  const [klavyeBoslugu] = useState(new Animated.Value(0));
+  const mevcutButce = useStore((state) => state.butce);
+  const setGlobalButce = useStore((state) => state.setButce);
 
-  useEffect(() => {
-    // Klavye açıldığında boyunu ölç ve kartı o kadar yukarı it
-    const klavyeAcildi = Keyboard.addListener(
-      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
-      (e) => {
-        Animated.timing(klavyeBoslugu, {
-          toValue: e.endCoordinates.height,
-          duration: 250,
-          useNativeDriver: false, // height/padding değişimi için false olmalı
-        }).start();
-      },
-    );
+  const [butce, setButce] = useState(mevcutButce !== "0" ? mevcutButce : "");
 
-    // Klavye kapandığında boşluğu sıfırla (Tam dibe oturur!)
-    const klavyeKapandi = Keyboard.addListener(
-      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide",
-      () => {
-        Animated.timing(klavyeBoslugu, {
-          toValue: 0,
-          duration: 250,
-          useNativeDriver: false,
-        }).start();
-      },
-    );
-
-    return () => {
-      klavyeAcildi.remove();
-      klavyeKapandi.remove();
-    };
-  }, []);
+  const butceDegisti = (metin: string) => {
+    const safRakam = metin.replace(/[^0-9]/g, "");
+    if (safRakam === "") {
+      setButce("");
+      return;
+    }
+    const formatli = safRakam.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    setButce(formatli);
+  };
 
   const onayla = () => {
-    console.log("Yeni Bütçe:", butce);
+    setGlobalButce(butce);
     router.back();
   };
 
   return (
-    <Animated.View
-      style={[styles.modalZemin, { paddingBottom: klavyeBoslugu }]}
+    // behavior ayarını ve offset'i modal yapısına göre güncelledik
+    <KeyboardAvoidingView
+      style={styles.modalZemin}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
     >
-      {/* 1. Üstteki Şeffaf Alan (Tıklayınca Kapanır) */}
-      <TouchableWithoutFeedback onPress={() => router.back()}>
+      {/* Şeffaf alana tıklandığında hem klavye kapansın hem modal gitsin */}
+      <TouchableWithoutFeedback
+        onPress={() => {
+          Keyboard.dismiss();
+          router.back();
+        }}
+      >
         <View style={styles.seffafAlan} />
       </TouchableWithoutFeedback>
 
-      {/* 2. Asıl Modal İçeriği (Alttan Açılan Kart) */}
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <View style={styles.kartIcerik}>
-          {/* Tutma Çizgisi (Grabber) */}
-          <View style={styles.tutmaCizgisiKapsayici}>
-            <View style={styles.tutmaCizgisi} />
-          </View>
-
-          {/* Başlık */}
-          <Text style={styles.baslik}>Bütçe Belirle</Text>
-
-          {/* Form Alanı */}
-          <View style={styles.formGrubu}>
-            <Text style={styles.etiket}>Aylık Bütçe</Text>
-            <View style={styles.inputZemin}>
-              <TextInput
-                style={styles.input}
-                placeholder="18,000"
-                placeholderTextColor="rgba(255, 255, 255, 0.50)"
-                keyboardType="numeric"
-                value={butce}
-                onChangeText={setButce}
-                autoFocus={true} // Açılır açılmaz klavye gelsin
-              />
-              <Text style={styles.paraBirimi}>TL</Text>
-            </View>
-          </View>
-
-          {/* Onayla Butonu */}
-          <TouchableOpacity
-            style={[
-              styles.onaylaButon,
-              butce.trim() === "" && styles.onaylaButonPasif,
-            ]}
-            activeOpacity={0.8}
-            onPress={onayla}
-            disabled={butce.trim() === ""}
-          >
-            <Text
-              style={[
-                styles.onaylaButonMetin,
-                butce.trim() === "" && styles.onaylaButonMetinPasif,
-              ]}
-            >
-              Onayla
-            </Text>
-          </TouchableOpacity>
-
-          {/* En altta güvenli boşluk (iPhone çentiği vb. için) */}
-          <View style={{ height: 30 }} />
+      {/* Kart içeriği */}
+      <View style={styles.kartIcerik}>
+        <View style={styles.tutmaCizgisiKapsayici}>
+          <View style={styles.tutmaCizgisi} />
         </View>
-      </TouchableWithoutFeedback>
-    </Animated.View>
+
+        <Text style={styles.baslik}>Bütçe Belirle</Text>
+
+        <View style={styles.formGrubu}>
+          <Text style={styles.etiket}>Aylık Bütçe</Text>
+          <View style={styles.inputZemin}>
+            <TextInput
+              style={styles.input}
+              placeholder="Örn: 18.000"
+              placeholderTextColor="rgba(255, 255, 255, 0.50)"
+              keyboardType="numeric" // decimal-pad bazen bazı cihazlarda sapıtabilir, numeric en güvenlisi
+              value={butce}
+              onChangeText={butceDegisti}
+              autoFocus={true}
+              maxLength={10}
+              cursorColor="#1DB954"
+            />
+            <Text style={styles.paraBirimi}>TL</Text>
+          </View>
+        </View>
+
+        <TouchableOpacity
+          style={[
+            styles.onaylaButon,
+            butce.trim() === "" && styles.onaylaButonPasif,
+          ]}
+          activeOpacity={0.8}
+          onPress={onayla}
+          disabled={butce.trim() === ""}
+        >
+          <Text
+            style={[
+              styles.onaylaButonMetin,
+              butce.trim() === "" && styles.onaylaButonMetinPasif,
+            ]}
+          >
+            Onayla
+          </Text>
+        </TouchableOpacity>
+
+        {/* Alt boşluk: Klavye açıkken iOS'ta ekstra güvenli alan sağlar */}
+        <View style={{ height: Platform.OS === "ios" ? 40 : 20 }} />
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -123,98 +110,89 @@ const styles = StyleSheet.create({
   modalZemin: {
     flex: 1,
     justifyContent: "flex-end",
+    backgroundColor: "rgba(0,0,0,0.5)", // Arka planı hafif karartmak tasarımı daha kaliteli gösterir
   },
   seffafAlan: {
-    flex: 1,
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   kartIcerik: {
     backgroundColor: "#18181B",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
     borderTopWidth: 1,
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.08)",
     paddingHorizontal: 25,
-    paddingTop: 10,
+    paddingTop: 8,
+    paddingBottom: Platform.OS === "ios" ? 20 : 10,
+    width: "100%",
+    // Android'de kartın klavye üstünde kalması için gereken gölge/elevation
+    elevation: 25,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: -8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 32,
-    elevation: 20,
+    shadowOffset: { width: 0, height: -10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
   },
   tutmaCizgisiKapsayici: {
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: 20,
     paddingVertical: 10,
   },
   tutmaCizgisi: {
     width: 40,
     height: 4,
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
     borderRadius: 2,
   },
-  baslik: {
-    color: "white",
-    fontSize: 20,
-    fontWeight: "700",
-    marginBottom: 20,
-  },
-  formGrubu: {
-    gap: 10,
-    marginBottom: 24,
-  },
+  baslik: { color: "white", fontSize: 22, fontWeight: "800", marginBottom: 24 },
+  formGrubu: { gap: 12, marginBottom: 30 },
   etiket: {
-    color: "rgba(255, 255, 255, 0.45)",
-    fontSize: 12,
-    fontWeight: "500",
-    letterSpacing: 0.3,
+    color: "rgba(255, 255, 255, 0.50)",
+    fontSize: 13,
+    fontWeight: "600",
+    letterSpacing: 0.5,
   },
   inputZemin: {
     backgroundColor: "#0A0A0A",
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
-    height: 61,
-    paddingHorizontal: 18,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: "rgba(255, 255, 255, 0.12)",
+    height: 64,
+    paddingHorizontal: 20,
     flexDirection: "row",
     alignItems: "center",
   },
   input: {
     flex: 1,
     color: "white",
-    fontSize: 18,
-    fontWeight: "600",
+    fontSize: 20,
+    fontWeight: "700",
   },
   paraBirimi: {
-    color: "rgba(255, 255, 255, 0.45)",
-    fontSize: 16,
-    fontWeight: "600",
+    color: "#1DB954",
+    fontSize: 18,
+    fontWeight: "700",
     marginLeft: 10,
   },
   onaylaButon: {
     backgroundColor: "#1DB954",
-    height: 56,
-    borderRadius: 16,
+    height: 58,
+    borderRadius: 18,
     justifyContent: "center",
     alignItems: "center",
+    // Butonun klavye üzerinde parlaması için
     shadowColor: "#1DB954",
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: 8,
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
   },
   onaylaButonPasif: {
-    backgroundColor: "rgba(29, 185, 84, 0.25)",
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
     shadowOpacity: 0,
-    elevation: 0,
   },
-  onaylaButonMetin: {
-    color: "white",
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  onaylaButonMetinPasif: {
-    color: "rgba(255, 255, 255, 0.5)",
-  },
+  onaylaButonMetin: { color: "white", fontSize: 16, fontWeight: "700" },
+  onaylaButonMetinPasif: { color: "rgba(255, 255, 255, 0.2)" },
 });

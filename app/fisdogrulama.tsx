@@ -1,18 +1,125 @@
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter } from "expo-router";
-import React from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import React, { useEffect, useState } from "react";
 import {
-  Platform,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
+import { Calendar, LocaleConfig } from "react-native-calendars";
+
+// FIREBASE VE STORE BAĞLANTILARI
+import { addDoc, collection, serverTimestamp } from "firebase/firestore";
+import { auth, db } from "../firebaseConfig";
+import { useStore } from "../store/useStore";
+
+LocaleConfig.locales["tr"] = {
+  monthNames: [
+    "Ocak",
+    "Şubat",
+    "Mart",
+    "Nisan",
+    "Mayıs",
+    "Haziran",
+    "Temmuz",
+    "Ağustos",
+    "Eylül",
+    "Ekim",
+    "Kasım",
+    "Aralık",
+  ],
+  monthNamesShort: [
+    "Oca",
+    "Şub",
+    "Mar",
+    "Nis",
+    "May",
+    "Haz",
+    "Tem",
+    "Ağu",
+    "Eyl",
+    "Eki",
+    "Kas",
+    "Ara",
+  ],
+  dayNames: [
+    "Pazar",
+    "Pazartesi",
+    "Salı",
+    "Çarşamba",
+    "Perşembe",
+    "Cuma",
+    "Cumartesi",
+  ],
+  dayNamesShort: ["Paz", "Pzt", "Sal", "Çar", "Per", "Cum", "Cmt"],
+  today: "Bugün",
+};
+LocaleConfig.defaultLocale = "tr";
 
 export default function FisDogrulamaScreen() {
   const router = useRouter();
+  const { imageUri } = useLocalSearchParams();
+  const { uid, tempFis, setTempFis } = useStore();
+  const [tarihModalAcik, setTarihModalAcik] = useState(false);
+
+  const anlikToplam = tempFis.urunler.reduce(
+    (acc, item) => acc + (Number(item.fiyat) || 0),
+    0,
+  );
+
+  useEffect(() => {
+    if (imageUri && tempFis.magazaAdi === "") {
+      setTempFis({
+        magazaAdi: "A101 MARKET",
+        tarih: "29.03.2024",
+        toplamTutar: 94.0,
+        urunler: [
+          { ad: "Elma (1kg)", fiyat: 30.5, kategori: "Gıda" },
+          { ad: "Çamaşır Suyu", fiyat: 45.0, kategori: "Temizlik" },
+          { ad: "Süt 1L", fiyat: 18.5, kategori: "Gıda" },
+        ],
+      });
+    }
+  }, [imageUri]);
+
+  const takvimdenSec = (day: any) => {
+    const d = new Date(day.timestamp);
+    const formatliTarih = `${d.getDate().toString().padStart(2, "0")}.${(d.getMonth() + 1).toString().padStart(2, "0")}.${d.getFullYear()}`;
+    setTempFis({ tarih: formatliTarih });
+    setTarihModalAcik(false);
+  };
+
+  const harcamayiKaydet = async () => {
+    const aktifUid = uid || auth.currentUser?.uid;
+    if (!aktifUid) return router.push("/(tabs)");
+
+    try {
+      const fisRef = await addDoc(collection(db, "Fisler"), {
+        kullanici_id: aktifUid,
+        magaza_adi: tempFis.magazaAdi,
+        tarih: tempFis.tarih,
+        toplam_tutar: anlikToplam,
+        olusturulma_tarihi: serverTimestamp(),
+      });
+      for (const urun of tempFis.urunler) {
+        await addDoc(collection(db, "Urunler"), {
+          fis_id: fisRef.id,
+          urun_adi: urun.ad,
+          fiyat: urun.fiyat,
+          kategori: urun.kategori || "Diğer", // KATEGORİ ARTIK FİREBASE'E GİDİYOR
+          kullanici_id: aktifUid,
+        });
+      }
+      setTempFis({ magazaAdi: "", urunler: [], toplamTutar: 0 });
+      router.push("/(tabs)");
+    } catch (e) {
+      router.push("/(tabs)");
+    }
+  };
 
   return (
     <View style={styles.anaEkran}>
@@ -46,18 +153,14 @@ export default function FisDogrulamaScreen() {
         <View style={styles.anaKart}>
           <LinearGradient
             colors={["rgba(29, 185, 84, 0.08)", "rgba(0, 0, 0, 0)"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
             style={styles.kartHeader}
           >
             <View style={styles.kartIkonZemin}>
               <Ionicons name="receipt-outline" size={20} color="#1DB954" />
             </View>
             <View>
-              <Text style={styles.kartBaslik}>Fişiniz Hazır</Text>
-              <Text style={styles.kartAciklama}>
-                Lütfen bilgileri doğrulayın
-              </Text>
+              <Text style={styles.kartBaslik}>Fiş Özeti</Text>
+              <Text style={styles.kartAciklama}>Veriler havuzdan çekildi</Text>
             </View>
           </LinearGradient>
 
@@ -71,13 +174,15 @@ export default function FisDogrulamaScreen() {
                     size={16}
                     color="#1DB954"
                   />
-                  <Text style={styles.bilgiMetin}>Migros T.A.Ş.</Text>
+                  <Text style={styles.bilgiMetin}>
+                    {tempFis.magazaAdi || "Okunuyor..."}
+                  </Text>
                 </View>
-                <Ionicons
-                  name="create-outline"
-                  size={14}
-                  color="rgba(255, 255, 255, 0.35)"
-                />
+                <TouchableOpacity
+                  onPress={() => router.push("/MagazaDuzenleme")}
+                >
+                  <Ionicons name="create-outline" size={16} color="#1DB954" />
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -86,68 +191,84 @@ export default function FisDogrulamaScreen() {
               <View style={styles.bilgiSatir}>
                 <View style={styles.bilgiIcerik}>
                   <Ionicons name="calendar-outline" size={16} color="#1DB954" />
-                  <Text style={styles.bilgiMetin}>28.10.2023</Text>
+                  <Text style={styles.bilgiMetin}>
+                    {tempFis.tarih || "Seçilmedi"}
+                  </Text>
                 </View>
-                <Ionicons
-                  name="create-outline"
-                  size={14}
-                  color="rgba(255, 255, 255, 0.35)"
-                />
+                <TouchableOpacity onPress={() => setTarihModalAcik(true)}>
+                  <Ionicons name="create-outline" size={18} color="#1DB954" />
+                </TouchableOpacity>
               </View>
             </View>
 
             <View style={styles.urunlerKutusu}>
-              <Text style={styles.bilgiEtiket}>ÜRÜNLER (8 kalem)</Text>
+              <Text style={styles.bilgiEtiket}>
+                ÜRÜNLER ({tempFis.urunler.length} kalem)
+              </Text>
               <View style={styles.urunListesi}>
-                <View style={styles.urunSatir}>
-                  <Text style={styles.urunAd}>Elma (1kg)</Text>
-                  <Text style={styles.urunFiyat}>30,50 TL</Text>
-                </View>
-                <View style={styles.urunSatir}>
-                  <Text style={styles.urunAd}>Çamaşır Suyu</Text>
-                  <Text style={styles.urunFiyat}>45,00 TL</Text>
-                </View>
-                <View style={styles.urunSatir}>
-                  <Text style={styles.urunAd}>Süt 1L</Text>
-                  <Text style={styles.urunFiyat}>18,50 TL</Text>
-                </View>
-              </View>
-              <View style={styles.urunlerDahaFazla}>
-                <Text style={styles.dahaFazlaMetin}>+ 5 ürün daha...</Text>
+                {tempFis.urunler.map((item, index) => (
+                  <View key={index} style={styles.urunSatir}>
+                    <Text style={styles.urunAd}>{item.ad}</Text>
+                    <Text style={styles.urunFiyat}>
+                      {item.fiyat.toFixed(2)} TL
+                    </Text>
+                  </View>
+                ))}
               </View>
             </View>
 
             <LinearGradient
               colors={["rgba(29, 185, 84, 0.12)", "rgba(29, 185, 84, 0.06)"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
               style={styles.toplamKutusu}
             >
               <Text style={styles.toplamEtiket}>TOPLAM</Text>
-              <Text style={styles.toplamTutar}>289,50 TL</Text>
+              <Text style={styles.toplamTutar}>
+                {anlikToplam.toFixed(2)} TL
+              </Text>
             </LinearGradient>
           </View>
         </View>
 
-        <View style={styles.altButonlarGrup}>
-          <TouchableOpacity
-            style={styles.kaydetButon}
-            activeOpacity={0.8}
-            onPress={() => router.push("/(tabs)")}
-          >
-            <Text style={styles.kaydetButonMetin}>Harcamayı Kaydet</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.hataButon} activeOpacity={0.6}>
-            <Ionicons
-              name="alert-circle-outline"
-              size={16}
-              color="rgba(255, 107, 107, 0.80)"
-            />
-            <Text style={styles.hataButonMetin}>Hata Bildir</Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          style={styles.kaydetButon}
+          activeOpacity={0.8}
+          onPress={harcamayiKaydet}
+        >
+          <Text style={styles.kaydetButonMetin}>Harcamayı Kaydet</Text>
+        </TouchableOpacity>
       </ScrollView>
+
+      <Modal visible={tarihModalAcik} transparent={true} animationType="fade">
+        <View style={styles.takvimZemin}>
+          <View style={styles.takvimKutu}>
+            <View style={styles.takvimUst}>
+              <Text style={styles.takvimBaslik}>Tarih Düzenle</Text>
+              <TouchableOpacity onPress={() => setTarihModalAcik(false)}>
+                <Ionicons
+                  name="close-circle"
+                  size={28}
+                  color="rgba(255,255,255,0.4)"
+                />
+              </TouchableOpacity>
+            </View>
+            <Calendar
+              onDayPress={takvimdenSec}
+              markedDates={{ [tempFis.tarih]: { selected: true } }}
+              maxDate={new Date().toISOString().split("T")[0]}
+              theme={{
+                calendarBackground: "#18181B",
+                textSectionTitleColor: "#1DB954",
+                selectedDayBackgroundColor: "#1DB954",
+                selectedDayTextColor: "#ffffff",
+                todayTextColor: "#1DB954",
+                dayTextColor: "#ffffff",
+                arrowColor: "#1DB954",
+                monthTextColor: "white",
+              }}
+            />
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -170,7 +291,6 @@ const styles = StyleSheet.create({
   },
   sayfaBaslik: { color: "white", fontSize: 18, fontWeight: "700" },
   scrollIcerik: { paddingHorizontal: 20, paddingBottom: 40 },
-
   basariKutusu: {
     flexDirection: "row",
     alignItems: "center",
@@ -192,19 +312,8 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   basariMetinKutu: { flex: 1 },
-  basariBaslik: {
-    color: "white",
-    fontSize: 13,
-    fontWeight: "600",
-    lineHeight: 19.5,
-  },
-  basariAciklama: {
-    color: "rgba(255, 255, 255, 0.45)",
-    fontSize: 11,
-    fontWeight: "400",
-    lineHeight: 16.5,
-  },
-
+  basariBaslik: { color: "white", fontSize: 13, fontWeight: "600" },
+  basariAciklama: { color: "rgba(255, 255, 255, 0.45)", fontSize: 11 },
   anaKart: {
     backgroundColor: "rgba(39, 39, 42, 0.80)",
     borderRadius: 24,
@@ -212,15 +321,6 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255, 255, 255, 0.08)",
     overflow: "hidden",
     marginBottom: 24,
-    ...Platform.select({
-      ios: {
-        shadowColor: "black",
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.4,
-        shadowRadius: 32,
-      },
-      android: { elevation: 12 },
-    }),
   },
   kartHeader: {
     flexDirection: "row",
@@ -241,19 +341,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginRight: 12,
   },
-  kartBaslik: {
-    color: "white",
-    fontSize: 18,
-    fontWeight: "700",
-    lineHeight: 27,
-  },
-  kartAciklama: {
-    color: "rgba(255, 255, 255, 0.40)",
-    fontSize: 12,
-    fontWeight: "400",
-    lineHeight: 18,
-  },
-
+  kartBaslik: { color: "white", fontSize: 18, fontWeight: "700" },
+  kartAciklama: { color: "rgba(255, 255, 255, 0.40)", fontSize: 12 },
   kartIcerik: { padding: 20, gap: 12 },
   bilgiKutusu: {
     backgroundColor: "rgba(255, 255, 255, 0.04)",
@@ -266,7 +355,6 @@ const styles = StyleSheet.create({
   bilgiEtiket: {
     color: "rgba(255, 255, 255, 0.40)",
     fontSize: 10,
-    fontWeight: "400",
     letterSpacing: 1,
     marginBottom: 6,
   },
@@ -277,7 +365,6 @@ const styles = StyleSheet.create({
   },
   bilgiIcerik: { flexDirection: "row", alignItems: "center", gap: 8 },
   bilgiMetin: { color: "white", fontSize: 14, fontWeight: "600" },
-
   urunlerKutusu: {
     backgroundColor: "rgba(255, 255, 255, 0.04)",
     borderRadius: 14,
@@ -290,14 +377,6 @@ const styles = StyleSheet.create({
   urunSatir: { flexDirection: "row", justifyContent: "space-between" },
   urunAd: { color: "rgba(255, 255, 255, 0.55)", fontSize: 12 },
   urunFiyat: { color: "rgba(255, 255, 255, 0.55)", fontSize: 12 },
-  urunlerDahaFazla: {
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255, 255, 255, 0.06)",
-    paddingTop: 8,
-    marginTop: 4,
-  },
-  dahaFazlaMetin: { color: "rgba(255, 255, 255, 0.30)", fontSize: 11 },
-
   toplamKutusu: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -307,7 +386,6 @@ const styles = StyleSheet.create({
     borderColor: "rgba(29, 185, 84, 0.25)",
     paddingHorizontal: 14,
     paddingVertical: 16,
-    marginTop: 4,
   },
   toplamEtiket: {
     color: "rgba(255, 255, 255, 0.70)",
@@ -315,37 +393,31 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   toplamTutar: { color: "white", fontSize: 22, fontWeight: "800" },
-
-  altButonlarGrup: { gap: 12 },
   kaydetButon: {
     backgroundColor: "#1DB954",
     borderRadius: 16,
     paddingVertical: 16,
     alignItems: "center",
-    ...Platform.select({
-      ios: {
-        shadowColor: "#1DB954",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.35,
-        shadowRadius: 20,
-      },
-      android: { elevation: 8 },
-    }),
   },
   kaydetButonMetin: { color: "white", fontSize: 15, fontWeight: "700" },
-  hataButon: {
-    flexDirection: "row",
+  takvimZemin: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.8)",
     justifyContent: "center",
-    alignItems: "center",
-    borderRadius: 16,
+    paddingHorizontal: 20,
+  },
+  takvimKutu: {
+    backgroundColor: "#18181B",
+    borderRadius: 24,
+    padding: 20,
     borderWidth: 1,
-    borderColor: "rgba(255, 107, 107, 0.40)",
-    paddingVertical: 14,
-    gap: 8,
+    borderColor: "rgba(255,255,255,0.1)",
   },
-  hataButonMetin: {
-    color: "rgba(255, 107, 107, 0.80)",
-    fontSize: 15,
-    fontWeight: "600",
+  takvimUst: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 15,
   },
+  takvimBaslik: { color: "white", fontSize: 18, fontWeight: "800" },
 });

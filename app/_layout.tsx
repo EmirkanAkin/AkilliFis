@@ -33,16 +33,21 @@ export default function RootLayout() {
         <Stack.Screen name="ilkgiris" />
         <Stack.Screen name="ilkgiris-butce" />
         <Stack.Screen name="(tabs)" />
+
         <Stack.Screen
           name="kamera"
           options={{ presentation: "modal", animation: "slide_from_bottom" }}
         />
+
         <Stack.Screen name="urundetay" />
         <Stack.Screen name="fisdogrulama" />
+
         <Stack.Screen
           name="manuelfis"
           options={{ presentation: "modal", animation: "slide_from_bottom" }}
         />
+
+        {/* --- MODALLAR BÖLÜMÜ --- */}
         <Stack.Screen
           name="butcemodal"
           options={{
@@ -51,8 +56,19 @@ export default function RootLayout() {
             contentStyle: { backgroundColor: "rgba(0,0,0,0.5)" },
           }}
         />
+
         <Stack.Screen
           name="isimmodal"
+          options={{
+            presentation: "transparentModal",
+            animation: "fade",
+            contentStyle: { backgroundColor: "rgba(0,0,0,0.5)" },
+          }}
+        />
+
+        {/* YENİ EKLENEN: Mağaza Düzenleme Modalı */}
+        <Stack.Screen
+          name="MagazaDuzenleme"
           options={{
             presentation: "transparentModal",
             animation: "fade",

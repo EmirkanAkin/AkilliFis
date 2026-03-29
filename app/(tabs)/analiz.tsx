@@ -1,8 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
+import { collection, getDocs, query, where } from "firebase/firestore";
 import React, { useCallback, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Animated,
   Easing,
   Pressable,
@@ -13,26 +15,98 @@ import {
   View,
 } from "react-native";
 import Svg, { Circle, G } from "react-native-svg";
+import { auth, db } from "../../firebaseConfig";
+import { useStore } from "../../store/useStore";
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+
+// Kategori Renkleri
+const KATEGORI_RENKLERI: any = {
+  Gıda: "#4CAF50",
+  Temizlik: "#2196F3",
+  Giyim: "#E91E63",
+  Eğlence: "#FF9800",
+  Diğer: "#9C27B0",
+};
 
 export default function AnalizScreen() {
   const circumference = 2 * Math.PI * 70;
   const animValue = useRef(new Animated.Value(0)).current;
   const scrollRef = useRef<ScrollView>(null);
 
-  // Veri kontrolü: [] boş, [1] dolu
-  const [harcamalar, setHarcamalar] = useState([]);
-  const [seciliBar, setSeciliBar] = useState<number | null>(null);
+  const { isim, uid } = useStore();
 
-  // Sayfaya her girildiğinde çalışan efekt
+  const [yukleniyor, setYukleniyor] = useState(true);
+  const [harcamalar, setHarcamalar] = useState<any[]>([]);
+  const [toplamHarcama, setToplamHarcama] = useState(0);
+  const [seciliBar, setSeciliBar] = useState<number | null>(null);
+  const [segments, setSegments] = useState<any[]>([]);
+
+  const veriGetir = async () => {
+    const aktifUid = uid || auth.currentUser?.uid;
+    if (!aktifUid) {
+      setYukleniyor(false);
+      return;
+    }
+
+    try {
+      const fislerRef = collection(db, "Fisler");
+      const qFis = query(fislerRef, where("kullanici_id", "==", aktifUid));
+      const fislerSnap = await getDocs(qFis);
+      setHarcamalar(fislerSnap.docs);
+
+      if (fislerSnap.empty) {
+        setYukleniyor(false);
+        return;
+      }
+
+      const urunlerRef = collection(db, "Urunler");
+      const qUrun = query(urunlerRef, where("kullanici_id", "==", aktifUid));
+      const urunlerSnap = await getDocs(qUrun);
+
+      let genelToplam = 0;
+      const kategoriToplami: any = {};
+
+      urunlerSnap.forEach((doc) => {
+        const data = doc.data();
+        const fiyat = Number(data.fiyat) || 0;
+        const kategori = data.kategori || "Diğer";
+
+        genelToplam += fiyat;
+
+        if (!kategoriToplami[kategori]) {
+          kategoriToplami[kategori] = 0;
+        }
+        kategoriToplami[kategori] += fiyat;
+      });
+
+      setToplamHarcama(genelToplam);
+
+      const dinamikSegments = Object.keys(kategoriToplami).map((katAd) => {
+        const tutar = kategoriToplami[katAd];
+        const percent = genelToplam > 0 ? tutar / genelToplam : 0;
+        return {
+          ad: katAd,
+          tutar: tutar.toFixed(2),
+          percent: percent,
+          color: KATEGORI_RENKLERI[katAd] || "#9C27B0",
+        };
+      });
+
+      dinamikSegments.sort((a, b) => b.percent - a.percent);
+      setSegments(dinamikSegments);
+    } catch (error) {
+      console.error("Analiz verisi çekilemedi:", error);
+    } finally {
+      setYukleniyor(false);
+    }
+  };
+
   useFocusEffect(
     useCallback(() => {
-      // Sayfayı en yukarıya çek
       scrollRef.current?.scrollTo({ y: 0, animated: false });
-
-      // Pasta grafik animasyonu (eğer veri varsa)
-      if (harcamalar.length > 0) {
+      setYukleniyor(true);
+      veriGetir().then(() => {
         animValue.setValue(0);
         Animated.timing(animValue, {
           toValue: -circumference,
@@ -40,19 +114,9 @@ export default function AnalizScreen() {
           easing: Easing.out(Easing.cubic),
           useNativeDriver: false,
         }).start();
-      }
-      return () => {};
-    }, [animValue, circumference, harcamalar]),
+      });
+    }, [circumference]),
   );
-
-  // Veri Tanımlamaları
-  const segments = [
-    { color: "#3B82F6", percent: 0.35, ad: "Temizlik", tutar: "1200" },
-    { color: "#8B5CF6", percent: 0.08, ad: "Diğer", tutar: "270" },
-    { color: "#EF4444", percent: 0.13, ad: "Kafe", tutar: "450" },
-    { color: "#F59E0B", percent: 0.2, ad: "Meyve/İçecek", tutar: "680" },
-    { color: "#1DB954", percent: 0.25, ad: "Sebze/Meyve", tutar: "850" },
-  ];
 
   const haftalikVeriler = [
     { gun: "Pzt", h: "45%", tutar: "210" },
@@ -64,7 +128,20 @@ export default function AnalizScreen() {
     { gun: "Paz", h: "50%", tutar: "280" },
   ];
 
-  // 1. SENARYO: ANALİZ VERİSİ YOKSA (BOŞ EKRAN)
+  if (yukleniyor) {
+    return (
+      <View
+        style={[
+          styles.anaEkran,
+          { justifyContent: "center", alignItems: "center" },
+        ]}
+      >
+        <ActivityIndicator size="large" color="#1DB954" />
+      </View>
+    );
+  }
+
+  // 1. BOŞ EKRAN
   if (harcamalar.length === 0) {
     return (
       <ScrollView
@@ -163,10 +240,10 @@ export default function AnalizScreen() {
     );
   }
 
-  // 2. SENARYO: VERİ VARSA (DOLU EKRAN)
+  // 2. DOLU EKRAN (ÇARK HESAPLAMALARI)
   let currentOffset = 0;
   const pieData = segments.map((seg) => {
-    const length = seg.percent * circumference;
+    const length = (seg.percent || 0) * circumference;
     const offset = currentOffset;
     currentOffset += length;
     return { ...seg, length, offset: -offset };
@@ -186,7 +263,9 @@ export default function AnalizScreen() {
           />
           <Text style={styles.kategoriBarIsim}>{title}</Text>
         </View>
-        <Text style={styles.kategoriBarTutar}>{amount} TL</Text>
+        <Text style={styles.kategoriBarTutar}>
+          {amount.replace(".", ",")} TL
+        </Text>
       </View>
       <View style={styles.kategoriBarZemin}>
         <View
@@ -210,10 +289,11 @@ export default function AnalizScreen() {
         <Text style={styles.ustBaslik}>ANALİZ</Text>
         <Text style={styles.sayfaBaslik}>
           Harika Gidiyorsun,{"\n"}
-          <Text style={styles.isimVurgu}>Emirkan! 🎉</Text>
+          <Text style={styles.isimVurgu}>{isim}! 🎉</Text>
         </Text>
       </View>
 
+      {/* DÜZELTİLDİ: ORİJİNAL KUPA KARTIN GERİ GELDİ */}
       <LinearGradient
         colors={["rgba(29, 185, 84, 0.12)", "rgba(29, 185, 84, 0.06)"]}
         start={{ x: 0, y: 0 }}
@@ -234,6 +314,7 @@ export default function AnalizScreen() {
         <TouchableOpacity style={styles.sekmeInaktif}>
           <Text style={styles.sekmeMetinInaktif}>BU HAFTA</Text>
         </TouchableOpacity>
+        {/* DÜZELTİLDİ: "TÜMÜ" YAZISI "BU AY" OLARAK DEĞİŞTİ */}
         <View style={styles.sekmeAktif}>
           <Text style={styles.sekmeMetinAktif}>BU AY</Text>
         </View>
@@ -246,14 +327,21 @@ export default function AnalizScreen() {
         <View style={styles.kartHeader}>
           <View>
             <Text style={styles.kartUstBaslik}>TOPLAM HARCAMA</Text>
-            <Text style={styles.kartBuyukTutar}>3,450 TL</Text>
+            <Text style={styles.kartBuyukTutar}>
+              {toplamHarcama.toLocaleString("tr-TR", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}{" "}
+              TL
+            </Text>
           </View>
           <View style={styles.yuzdeRozeti}>
-            <Ionicons name="trending-up" size={12} color="#1DB954" />
+            <Ionicons name="trending-down" size={12} color="#1DB954" />
             <Text style={styles.yuzdeRozetMetni}>-23%</Text>
           </View>
         </View>
 
+        {/* DÜZELTİLDİ: ÇARK GERİ GELDİ VE HATASIZ ÇALIŞIYOR */}
         <View style={styles.grafikAlani}>
           <Svg width="200" height="200" viewBox="0 0 200 200">
             <G rotation="-90" origin="100, 100">
@@ -284,31 +372,30 @@ export default function AnalizScreen() {
           </Svg>
           <View style={styles.pieMerkez}>
             <Text style={styles.pieMerkezUst}>TOPLAM</Text>
-            <Text style={styles.pieMerkezMiktar}>3,450</Text>
+            <Text style={[styles.pieMerkezMiktar, { fontSize: 16 }]}>
+              {Math.floor(toplamHarcama)}
+            </Text>
             <Text style={styles.pieMerkezTL}>TL</Text>
           </View>
         </View>
 
         <View style={styles.legendKapsayici}>
-          <View style={styles.legendSatir}>
-            <View style={styles.legendOge}>
-              <View style={[styles.nokta, { backgroundColor: "#1DB954" }]} />
-              <Text style={styles.legendMetin}>Sebze/Meyve (25%)</Text>
-            </View>
-            <View style={styles.legendOge}>
-              <View style={[styles.nokta, { backgroundColor: "#3B82F6" }]} />
-              <Text style={styles.legendMetin}>Temizlik (35%)</Text>
-            </View>
-          </View>
-          <View style={styles.legendSatir}>
-            <View style={styles.legendOge}>
-              <View style={[styles.nokta, { backgroundColor: "#F59E0B" }]} />
-              <Text style={styles.legendMetin}>Meyve/İçecek (20%)</Text>
-            </View>
-            <View style={styles.legendOge}>
-              <View style={[styles.nokta, { backgroundColor: "#EF4444" }]} />
-              <Text style={styles.legendMetin}>Kafe (13%)</Text>
-            </View>
+          <View
+            style={{
+              flexDirection: "row",
+              flexWrap: "wrap",
+              gap: 16,
+              justifyContent: "center",
+            }}
+          >
+            {segments.map((seg, i) => (
+              <View key={i} style={styles.legendOge}>
+                <View style={[styles.nokta, { backgroundColor: seg.color }]} />
+                <Text style={styles.legendMetin}>
+                  {seg.ad} ({Math.round(seg.percent * 100)}%)
+                </Text>
+              </View>
+            ))}
           </View>
         </View>
       </View>
@@ -322,7 +409,7 @@ export default function AnalizScreen() {
               color={s.color}
               title={s.ad}
               amount={s.tutar}
-              percent={`${s.percent * 100}%`}
+              percent={`${s.percent * 100 || 0}%`}
             />
           ))}
         </View>
@@ -379,7 +466,6 @@ const styles = StyleSheet.create({
     lineHeight: 28,
   },
   isimVurgu: { color: "#1DB954" },
-
   scrollIcerikBos: { paddingHorizontal: 20, paddingTop: 60 },
   ortaIcerikBos: { flex: 1, alignItems: "center" },
   merkezGrafikKapsayici: {
@@ -474,7 +560,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   ipucuMetniBos: { color: "rgba(255, 255, 255, 0.5)", fontSize: 12 },
-
   kupaKarti: {
     flexDirection: "row",
     alignItems: "center",
@@ -564,7 +649,7 @@ const styles = StyleSheet.create({
   pieMerkezUst: { color: "rgba(255, 255, 255, 0.40)", fontSize: 11 },
   pieMerkezMiktar: { color: "white", fontSize: 17, fontWeight: "800" },
   pieMerkezTL: { color: "#1DB954", fontSize: 11, fontWeight: "600" },
-  legendKapsayici: { gap: 10 },
+  legendKapsayici: { gap: 10, marginTop: 10 },
   legendSatir: { flexDirection: "row", gap: 16 },
   legendOge: { flexDirection: "row", alignItems: "center", gap: 6 },
   nokta: { width: 8, height: 8, borderRadius: 2 },

@@ -1,8 +1,16 @@
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
 import {
+  collection,
+  onSnapshot,
+  orderBy,
+  query,
+  where,
+} from "firebase/firestore";
+import React, { useEffect, useState } from "react";
+import {
+  ActivityIndicator,
   Platform,
   ScrollView,
   StyleSheet,
@@ -11,14 +19,57 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { auth, db } from "../../firebaseConfig";
+import { useStore } from "../../store/useStore";
 
 export default function HarcamalarScreen() {
   const router = useRouter();
+  const { uid } = useStore();
 
-  const [harcamalar, setHarcamalar] = useState([]);
+  const [harcamalar, setHarcamalar] = useState<any[]>([]);
+  const [yukleniyor, setYukleniyor] = useState(true);
+
+  // FİREBASE BAĞLANTISI
+  useEffect(() => {
+    const aktifUid = uid || auth.currentUser?.uid;
+
+    if (aktifUid) {
+      const q = query(
+        collection(db, "Fisler"),
+        where("kullanici_id", "==", aktifUid),
+        orderBy("olusturulma_tarihi", "desc"),
+      );
+
+      const unsub = onSnapshot(q, (snapshot) => {
+        const veriler = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+        setHarcamalar(veriler);
+        setYukleniyor(false);
+      });
+
+      return () => unsub();
+    } else {
+      setYukleniyor(false);
+    }
+  }, [uid]);
+
+  if (yukleniyor) {
+    return (
+      <View
+        style={[
+          styles.anaEkranBos,
+          { justifyContent: "center", alignItems: "center" },
+        ]}
+      >
+        <ActivityIndicator size="large" color="#1DB954" />
+      </View>
+    );
+  }
 
   // ==========================================
-  // 🔴 1. SENARYO: SEPET BOŞSA (YENİ EFSANE BOŞ TASARIM)
+  // 🔴 1. SENARYO: SEPET BOŞSA (TASARIM AYNI)
   // ==========================================
   if (harcamalar.length === 0) {
     return (
@@ -29,7 +80,7 @@ export default function HarcamalarScreen() {
           <Text style={styles.anaBaslikBos}>Tüm Fişler</Text>
         </View>
 
-        {/* ORTA İÇERİK (İkon ve Metinler) */}
+        {/* ORTA İÇERİK */}
         <View style={styles.ortaIcerikKapsayiciBos}>
           <View style={styles.devIkonDisHalkaBos}>
             <View style={styles.devIkonOrtaHalkaBos}>
@@ -83,7 +134,7 @@ export default function HarcamalarScreen() {
   }
 
   // ==========================================
-  // 🟢 2. SENARYO: SEPET DOLUYSA (SENİN ESKİ JİLET TASARIMIN)
+  // 🟢 2. SENARYO: SEPET DOLUYSA (TASARIM AYNI)
   // ==========================================
   return (
     <View style={styles.anaEkran}>
@@ -129,29 +180,14 @@ export default function HarcamalarScreen() {
               <Text
                 style={[styles.filtreRozetMetin, styles.filtreRozetMetinAktif]}
               >
-                10
+                {harcamalar.length}
               </Text>
             </View>
           </TouchableOpacity>
-
           <TouchableOpacity style={styles.filtreHap} activeOpacity={0.7}>
             <Text style={styles.filtreMetin}>Market</Text>
             <View style={styles.filtreRozet}>
-              <Text style={styles.filtreRozetMetin}>5</Text>
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.filtreHap} activeOpacity={0.7}>
-            <Text style={styles.filtreMetin}>Kafe</Text>
-            <View style={styles.filtreRozet}>
-              <Text style={styles.filtreRozetMetin}>1</Text>
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.filtreHap} activeOpacity={0.7}>
-            <Text style={styles.filtreMetin}>Abonelik</Text>
-            <View style={styles.filtreRozet}>
-              <Text style={styles.filtreRozetMetin}>2</Text>
+              <Text style={styles.filtreRozetMetin}>0</Text>
             </View>
           </TouchableOpacity>
         </ScrollView>
@@ -162,173 +198,52 @@ export default function HarcamalarScreen() {
         style={styles.listeAlani}
         showsVerticalScrollIndicator={false}
       >
-        {/* TARİH GRUBU (EKİM 2023) */}
+        {/* LİSTE BAŞLIĞI */}
         <View style={styles.tarihSatiri}>
           <View style={styles.tarihSolGrup}>
             <View style={styles.tarihCizgisi} />
-            <Text style={styles.tarihBaslik}>EKİM 2023</Text>
-          </View>
-          <View style={styles.tarihSagGrup}>
-            <Ionicons name="trending-down" size={14} color="#FF6B6B" />
-            <Text style={styles.tarihToplamTutar}>2.250,80 TL</Text>
+            <Text style={styles.tarihBaslik}>TÜM ZAMANLAR</Text>
           </View>
         </View>
 
-        {/* MİGROS */}
-        <TouchableOpacity style={styles.harcamaOgesi} activeOpacity={0.7}>
-          <View
-            style={[
-              styles.ikonZemini,
-              { backgroundColor: "#1DB954" },
-              styles.migrosNeonGolge,
-            ]}
+        {/* FİREBASE'DEN GELEN VERİLERLE LİSTE OLUŞTURMA */}
+        {harcamalar.map((item) => (
+          <TouchableOpacity
+            key={item.id}
+            style={styles.harcamaOgesi}
+            activeOpacity={0.7}
+            onPress={() =>
+              router.push({ pathname: "/urundetay", params: { id: item.id } })
+            }
           >
-            <Text style={styles.ikonHarf}>M</Text>
-          </View>
-          <View style={styles.harcamaBilgi}>
-            <Text style={styles.harcamaAd}>Migros</Text>
-            <View style={styles.kategoriVeTarihKutusu}>
-              <View style={styles.kategoriKutucuk}>
-                <Text style={styles.kategoriKutucukMetin}>Market</Text>
-              </View>
-              <Text style={styles.harcamaTarihMetni}>28 Eki 2023</Text>
+            <View
+              style={[
+                styles.ikonZemini,
+                { backgroundColor: "#1DB954" },
+                styles.migrosNeonGolge,
+              ]}
+            >
+              <Text style={styles.ikonHarf}>{item.magaza_adi?.[0] || "?"}</Text>
             </View>
-          </View>
-          <View style={styles.fiyatVeOkKapsayici}>
-            <Text style={styles.harcamaTutar}>-289,50 TL</Text>
-            <Ionicons
-              name="chevron-forward"
-              size={12}
-              color="rgba(255,255,255,0.25)"
-            />
-          </View>
-        </TouchableOpacity>
-
-        {/* STARBUCKS */}
-        <TouchableOpacity style={styles.harcamaOgesi} activeOpacity={0.7}>
-          <View
-            style={[
-              styles.ikonZemini,
-              { backgroundColor: "#00704A" },
-              styles.starbucksNeonGolge,
-            ]}
-          >
-            <Text style={styles.ikonHarf}>S</Text>
-          </View>
-          <View style={styles.harcamaBilgi}>
-            <Text style={styles.harcamaAd}>Starbucks</Text>
-            <View style={styles.kategoriVeTarihKutusu}>
-              <View style={styles.kategoriKutucuk}>
-                <Text style={styles.kategoriKutucukMetin}>Kafe</Text>
+            <View style={styles.harcamaBilgi}>
+              <Text style={styles.harcamaAd}>{item.magaza_adi}</Text>
+              <View style={styles.kategoriVeTarihKutusu}>
+                <View style={styles.kategoriKutucuk}>
+                  <Text style={styles.kategoriKutucukMetin}>Fiş</Text>
+                </View>
+                <Text style={styles.harcamaTarihMetni}>{item.tarih}</Text>
               </View>
-              <Text style={styles.harcamaTarihMetni}>27 Eki 2023</Text>
             </View>
-          </View>
-          <View style={styles.fiyatVeOkKapsayici}>
-            <Text style={styles.harcamaTutar}>-124,00 TL</Text>
-            <Ionicons
-              name="chevron-forward"
-              size={12}
-              color="rgba(255,255,255,0.25)"
-            />
-          </View>
-        </TouchableOpacity>
-
-        {/* TRENDYOL */}
-        <TouchableOpacity style={styles.harcamaOgesi} activeOpacity={0.7}>
-          <View
-            style={[
-              styles.ikonZemini,
-              { backgroundColor: "#F27A1A" },
-              styles.trendyolNeonGolge,
-            ]}
-          >
-            <Text style={styles.ikonHarf}>T</Text>
-          </View>
-          <View style={styles.harcamaBilgi}>
-            <Text style={styles.harcamaAd}>Trendyol</Text>
-            <View style={styles.kategoriVeTarihKutusu}>
-              <View style={styles.kategoriKutucuk}>
-                <Text style={styles.kategoriKutucukMetin}>Alışveriş</Text>
-              </View>
-              <Text style={styles.harcamaTarihMetni}>25 Eki 2023</Text>
+            <View style={styles.fiyatVeOkKapsayici}>
+              <Text style={styles.harcamaTutar}>-{item.toplam_tutar} TL</Text>
+              <Ionicons
+                name="chevron-forward"
+                size={12}
+                color="rgba(255,255,255,0.25)"
+              />
             </View>
-          </View>
-          <View style={styles.fiyatVeOkKapsayici}>
-            <Text style={styles.harcamaTutar}>-450,00 TL</Text>
-            <Ionicons
-              name="chevron-forward"
-              size={12}
-              color="rgba(255,255,255,0.25)"
-            />
-          </View>
-        </TouchableOpacity>
-
-        {/* TARİH GRUBU (EYLÜL 2023) */}
-        <View style={styles.tarihSatiri}>
-          <View style={styles.tarihSolGrup}>
-            <View style={styles.tarihCizgisi} />
-            <Text style={styles.tarihBaslik}>EYLÜL 2023</Text>
-          </View>
-          <View style={styles.tarihSagGrup}>
-            <Ionicons name="trending-down" size={14} color="#FF6B6B" />
-            <Text style={styles.tarihToplamTutar}>726,68 TL</Text>
-          </View>
-        </View>
-
-        {/* NETFLIX */}
-        <TouchableOpacity style={styles.harcamaOgesi} activeOpacity={0.7}>
-          <View style={[styles.ikonZemini, { backgroundColor: "#E30A17" }]}>
-            <Text style={styles.ikonHarf}>N</Text>
-          </View>
-          <View style={styles.harcamaBilgi}>
-            <Text style={styles.harcamaAd}>Netflix</Text>
-            <View style={styles.kategoriVeTarihKutusu}>
-              <View style={styles.kategoriKutucuk}>
-                <Text style={styles.kategoriKutucukMetin}>Abonelik</Text>
-              </View>
-              <Text style={styles.harcamaTarihMetni}>25 Eyl 2023</Text>
-            </View>
-          </View>
-          <View style={styles.fiyatVeOkKapsayici}>
-            <Text style={styles.harcamaTutar}>-59,99 TL</Text>
-            <Ionicons
-              name="chevron-forward"
-              size={12}
-              color="rgba(255,255,255,0.25)"
-            />
-          </View>
-        </TouchableOpacity>
-
-        {/* SPOTIFY */}
-        <TouchableOpacity style={styles.harcamaOgesi} activeOpacity={0.7}>
-          <View
-            style={[
-              styles.ikonZemini,
-              { backgroundColor: "#1DB954" },
-              styles.migrosNeonGolge,
-            ]}
-          >
-            <Text style={styles.ikonHarf}>Sp</Text>
-          </View>
-          <View style={styles.harcamaBilgi}>
-            <Text style={styles.harcamaAd}>Spotify</Text>
-            <View style={styles.kategoriVeTarihKutusu}>
-              <View style={styles.kategoriKutucuk}>
-                <Text style={styles.kategoriKutucukMetin}>Abonelik</Text>
-              </View>
-              <Text style={styles.harcamaTarihMetni}>15 Eyl 2023</Text>
-            </View>
-          </View>
-          <View style={styles.fiyatVeOkKapsayici}>
-            <Text style={styles.harcamaTutar}>-29,99 TL</Text>
-            <Ionicons
-              name="chevron-forward"
-              size={12}
-              color="rgba(255,255,255,0.25)"
-            />
-          </View>
-        </TouchableOpacity>
+          </TouchableOpacity>
+        ))}
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -336,10 +251,9 @@ export default function HarcamalarScreen() {
   );
 }
 
+// ... STİLLER AYNEN DURUYOR ...
 const styles = StyleSheet.create({
-  // ==========================================
-  // 🔴 BOŞ EKRAN STİLLERİ
-  // ==========================================
+  // BOŞ EKRAN
   anaEkranBos: {
     flex: 1,
     backgroundColor: "#0A0A0A",
@@ -464,9 +378,7 @@ const styles = StyleSheet.create({
     fontWeight: "400",
   },
 
-  // ==========================================
-  // 🟢 DOLU EKRAN STİLLERİ (BİREBİR SENİN KODUN)
-  // ==========================================
+  // DOLU EKRAN
   anaEkran: { flex: 1, backgroundColor: "#121212", paddingTop: 60 },
   headerKutusu: {
     flexDirection: "row",

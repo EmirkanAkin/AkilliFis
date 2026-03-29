@@ -14,13 +14,23 @@ import {
   View,
 } from "react-native";
 
+// ZUSTAND VE FIREBASE BAĞLANTILARI
+import { signInAnonymously } from "firebase/auth";
+import { doc, setDoc } from "firebase/firestore";
+import { auth, db } from "../firebaseConfig";
+import { useStore } from "../store/useStore";
+
 export default function IlkGirisButceScreen() {
   const router = useRouter();
 
   const scrollRef = useRef<ScrollView>(null);
 
+  // Lokal state (Ekranda yazarken tuttuğumuz yer)
   const [seciliButce, setSeciliButce] = useState("5.000");
   const [klavyeAcik, setKlavyeAcik] = useState(false);
+
+  // ZUSTAND'DAN İSİM, BÜTÇE KAYDETME VE UID KAYDETME FONKSİYONLARINI ÇEKTİK
+  const { isim, setButce, setUid } = useStore();
 
   useEffect(() => {
     const klavyeGosterildi = Keyboard.addListener(
@@ -60,12 +70,33 @@ export default function IlkGirisButceScreen() {
     setSeciliButce(formatli);
   };
 
-  const devamEt = () => {
-    router.push("/(tabs)");
-  };
+  // LOG KONTROLLÜ YENİ KAYIT FONKSİYONU
+  const devamEt = async () => {
+    console.log("1. Butona basıldı, işlem başlıyor...");
+    try {
+      console.log("2. Firebase Anonim Giriş deneniyor...");
+      const userCredential = await signInAnonymously(auth);
+      const user = userCredential.user;
+      console.log("3. Giriş başarılı! Firebase Kimliği (UID):", user.uid);
 
-  const atla = () => {
-    router.push("/(tabs)");
+      setUid(user.uid);
+      setButce(seciliButce);
+
+      console.log("4. Veritabanına (Firestore) yazma isteği gönderiliyor...");
+      await setDoc(doc(db, "Kullanicilar", user.uid), {
+        id: user.uid,
+        isim: isim,
+        aylik_butce: seciliButce,
+        kalan_butce: seciliButce,
+        kayit_tarihi: new Date().toISOString(),
+      });
+      console.log("5. MÜKEMMEL! Veri başarıyla kasaya yazıldı.");
+
+      router.push("/(tabs)");
+    } catch (error: any) {
+      console.error("KAYIT HATASI:", error.message);
+      alert("Hata oluştu: " + error.message);
+    }
   };
 
   return (
@@ -324,7 +355,6 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
 
-  // Alt Buton Alanı (Absolute kaldırıldı)
   altButonKapsayici: {
     paddingHorizontal: 24,
     paddingBottom: 40,
@@ -347,16 +377,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
     letterSpacing: 0.3,
-  },
-  atlaButon: {
-    height: 53,
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: 12,
-  },
-  atlaMetni: {
-    color: "rgba(255, 255, 255, 0.40)",
-    fontSize: 14,
-    fontWeight: "500",
   },
 });

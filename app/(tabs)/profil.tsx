@@ -11,8 +11,14 @@ import {
   View,
 } from "react-native";
 
+// 1. ZUSTAND (BEYİN) İÇERİ AKTARILDI
+import { useStore } from "../../store/useStore";
+
 export default function ProfilScreen() {
   const router = useRouter();
+
+  // 2. BEYİNDEKİ VERİLERİ (isim ve butce) SAYFAYA ÇEKTİK
+  const { isim, butce } = useStore();
 
   const handleIsimDegistir = () => {
     router.push("/isimmodal");
@@ -38,122 +44,132 @@ export default function ProfilScreen() {
   };
 
   return (
-    <ScrollView style={styles.anaEkran} showsVerticalScrollIndicator={false}>
-      {/* 1. ÜST BAŞLIK */}
-      <View style={styles.headerKapsayici}>
-        <Text style={styles.ustBaslik}>HESABIM</Text>
-        <Text style={styles.sayfaBaslik}>Profil</Text>
-      </View>
-
-      {/*  2. İSİM KARTI (Daha kalın font + Yeni İkon) */}
-      <TouchableOpacity
-        style={styles.isimKartiZemin}
-        activeOpacity={0.8}
-        onPress={handleIsimDegistir}
+    /* Dış Zırh (Yukarı sekmeyi önlemek için eklemiştik) */
+    <View style={styles.anaEkran}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 100 }}
       >
-        <LinearGradient
-          colors={["rgba(29, 185, 84, 0.10)", "rgba(29, 185, 84, 0.04)"]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.isimKartiIc}
+        {/* 1. ÜST BAŞLIK */}
+        <View style={styles.headerKapsayici}>
+          <Text style={styles.ustBaslik}>HESABIM</Text>
+          <Text style={styles.sayfaBaslik}>Profil</Text>
+        </View>
+
+        {/* 2. İSİM KARTI */}
+        <TouchableOpacity
+          style={styles.isimKartiZemin}
+          activeOpacity={0.8}
+          onPress={handleIsimDegistir}
         >
-          {/* Avatar */}
           <LinearGradient
-            colors={["#1DB954", "#15A344"]}
+            colors={["rgba(29, 185, 84, 0.10)", "rgba(29, 185, 84, 0.04)"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={styles.avatarKutu}
+            style={styles.isimKartiIc}
           >
-            <Text style={styles.avatarHarf}>E</Text>
-          </LinearGradient>
-
-          {/* İsim ve Düzenle İkonu */}
-          <View style={styles.isimBilgiAlani}>
-            <Text style={styles.kullaniciIsmi}>Emirkan</Text>
-            {/* İŞTE İSTEDİĞİN O KARELİ KALEM İKONU */}
-            <Ionicons
-              name="create-outline"
-              size={20}
-              color="rgba(255, 255, 255, 0.45)"
-            />
-          </View>
-        </LinearGradient>
-      </TouchableOpacity>
-
-      {/* 3. BÜTÇE KARTI (Daha kalın font + Yeni İkon) */}
-      <TouchableOpacity
-        style={styles.butceKartiZemin}
-        activeOpacity={0.8}
-        onPress={handleButceBelirle}
-      >
-        <View style={styles.butceBilgiAlani}>
-          <Text style={styles.butceBaslik}>AYLIK BÜTÇE</Text>
-          <Text style={styles.butceDeger}>
-            18.000 <Text style={styles.butceParaBirimi}>TL</Text>
-          </Text>
-        </View>
-        <Ionicons name="create-outline" size={24} color="#1DB954" />
-      </TouchableOpacity>
-
-      {/* 4. İSTATİSTİK KARTLARI */}
-      <View style={styles.istatistikKapsayici}>
-        <View style={styles.istatistikKutusu}>
-          <Text style={styles.istatistikDeger}>47</Text>
-          <Text style={styles.istatistikEtiket}>Toplam Fiş</Text>
-        </View>
-        <View style={styles.istatistikKutusu}>
-          <Text style={styles.istatistikDeger}>12</Text>
-          <Text style={styles.istatistikEtiket}>Bu Ay</Text>
-        </View>
-        <View style={styles.istatistikKutusu}>
-          <Text style={styles.istatistikDeger}>1.040 TL</Text>
-          <Text style={styles.istatistikEtiket}>Tasarruf</Text>
-        </View>
-      </View>
-
-      {/* 5. AYARLAR MENÜSÜ */}
-      <View style={styles.menuKapsayici}>
-        <Text style={styles.menuBaslik}>AYARLAR</Text>
-        <View style={styles.menuListeKutu}>
-          {/* Uygulama Versiyonu */}
-          <View style={styles.menuOgesi}>
-            <View
-              style={[
-                styles.menuIkonZemin,
-                {
-                  backgroundColor: "rgba(236, 72, 153, 0.12)",
-                  borderColor: "rgba(236, 72, 153, 0.20)",
-                },
-              ]}
+            {/* Avatar */}
+            <LinearGradient
+              colors={["#1DB954", "#15A344"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.avatarKutu}
             >
+              {/* 3. DİNAMİK AVATAR HARFİ (İsmin ilk harfini alır) */}
+              <Text style={styles.avatarHarf}>
+                {isim ? isim.charAt(0).toUpperCase() : "M"}
+              </Text>
+            </LinearGradient>
+
+            {/* İsim ve Düzenle İkonu */}
+            <View style={styles.isimBilgiAlani}>
+              {/* 4. DİNAMİK İSİM (Zustand'dan geliyor) */}
+              <Text style={styles.kullaniciIsmi}>{isim}</Text>
+
               <Ionicons
-                name="phone-portrait-outline"
-                size={16}
-                color="#EC4899"
+                name="create-outline"
+                size={20}
+                color="rgba(255, 255, 255, 0.45)"
               />
             </View>
-            <Text style={styles.menuOgeMetin}>Uygulama Versiyonu</Text>
-            <Text style={styles.menuSagBilgi}>1.0.0</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+
+        {/* 3. BÜTÇE KARTI */}
+        <TouchableOpacity
+          style={styles.butceKartiZemin}
+          activeOpacity={0.8}
+          onPress={handleButceBelirle}
+        >
+          <View style={styles.butceBilgiAlani}>
+            <Text style={styles.butceBaslik}>AYLIK BÜTÇE</Text>
+
+            {/* 5. DİNAMİK BÜTÇE (Zustand'dan geliyor) */}
+            <Text style={styles.butceDeger}>
+              {butce} <Text style={styles.butceParaBirimi}>TL</Text>
+            </Text>
+          </View>
+          <Ionicons name="create-outline" size={24} color="#1DB954" />
+        </TouchableOpacity>
+
+        {/* 4. İSTATİSTİK KARTLARI (Şimdilik sabit) */}
+        <View style={styles.istatistikKapsayici}>
+          <View style={styles.istatistikKutusu}>
+            <Text style={styles.istatistikDeger}>47</Text>
+            <Text style={styles.istatistikEtiket}>Toplam Fiş</Text>
+          </View>
+          <View style={styles.istatistikKutusu}>
+            <Text style={styles.istatistikDeger}>12</Text>
+            <Text style={styles.istatistikEtiket}>Bu Ay</Text>
+          </View>
+          <View style={styles.istatistikKutusu}>
+            <Text style={styles.istatistikDeger}>1.040 TL</Text>
+            <Text style={styles.istatistikEtiket}>Tasarruf</Text>
           </View>
         </View>
-      </View>
 
-      {/* 6. VERİLERİ SIFIRLA */}
-      <TouchableOpacity
-        style={styles.sifirlaButon}
-        activeOpacity={0.7}
-        onPress={handleVerileriSifirla}
-      >
-        <Ionicons
-          name="trash-outline"
-          size={18}
-          color="rgba(239, 68, 68, 0.80)"
-        />
-        <Text style={styles.sifirlaMetin}>Tüm Verileri Sıfırla</Text>
-      </TouchableOpacity>
+        {/* 5. AYARLAR MENÜSÜ */}
+        <View style={styles.menuKapsayici}>
+          <Text style={styles.menuBaslik}>AYARLAR</Text>
+          <View style={styles.menuListeKutu}>
+            {/* Uygulama Versiyonu */}
+            <View style={styles.menuOgesi}>
+              <View
+                style={[
+                  styles.menuIkonZemin,
+                  {
+                    backgroundColor: "rgba(236, 72, 153, 0.12)",
+                    borderColor: "rgba(236, 72, 153, 0.20)",
+                  },
+                ]}
+              >
+                <Ionicons
+                  name="phone-portrait-outline"
+                  size={16}
+                  color="#EC4899"
+                />
+              </View>
+              <Text style={styles.menuOgeMetin}>Uygulama Versiyonu</Text>
+              <Text style={styles.menuSagBilgi}>1.0.0</Text>
+            </View>
+          </View>
+        </View>
 
-      <View style={{ height: 40 }} />
-    </ScrollView>
+        {/* 6. VERİLERİ SIFIRLA */}
+        <TouchableOpacity
+          style={styles.sifirlaButon}
+          activeOpacity={0.7}
+          onPress={handleVerileriSifirla}
+        >
+          <Ionicons
+            name="trash-outline"
+            size={18}
+            color="rgba(239, 68, 68, 0.80)"
+          />
+          <Text style={styles.sifirlaMetin}>Tüm Verileri Sıfırla</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </View>
   );
 }
 
@@ -206,14 +222,14 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 8,
   },
-  avatarHarf: { color: "white", fontSize: 24, fontWeight: "900" }, // Daha kalın
+  avatarHarf: { color: "white", fontSize: 24, fontWeight: "900" },
   isimBilgiAlani: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
   },
-  kullaniciIsmi: { color: "white", fontSize: 22, fontWeight: "900" }, //  DAHA KALIN VE BÜYÜK
+  kullaniciIsmi: { color: "white", fontSize: 22, fontWeight: "900" },
 
   // BÜTÇE KARTI
   butceKartiZemin: {
@@ -234,7 +250,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     letterSpacing: 0.5,
   },
-  butceDeger: { color: "white", fontSize: 24, fontWeight: "900" }, //  DAHA KALIN VE BÜYÜK
+  butceDeger: { color: "white", fontSize: 24, fontWeight: "900" },
   butceParaBirimi: {
     color: "rgba(255, 255, 255, 0.45)",
     fontSize: 16,

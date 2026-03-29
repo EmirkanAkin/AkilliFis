@@ -1,8 +1,20 @@
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  updateDoc,
+  where,
+} from "firebase/firestore";
+import React, { useEffect, useState } from "react";
+import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -13,106 +25,187 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { auth, db } from "../firebaseConfig";
+
+// KATEGORİ AYARLARI (Renk ve İkonlar)
+const KATEGORI_AYARLARI: any = {
+  Gıda: { renk: "#4CAF50", ikon: "nutrition" },
+  Temizlik: { renk: "#2196F3", ikon: "water" },
+  Giyim: { renk: "#E91E63", ikon: "shirt" },
+  Eğlence: { renk: "#FF9800", ikon: "game-controller" },
+  Diğer: { renk: "#9C27B0", ikon: "bag-handle" },
+};
 
 export default function UrunDetayiScreen() {
   const router = useRouter();
+  const { id } = useLocalSearchParams();
 
+  const [yukleniyor, setYukleniyor] = useState(true);
   const [duzenleModalAcik, setDuzenleModalAcik] = useState(false);
+  const [fisDetay, setFisDetay] = useState({
+    magaza: "Yükleniyor...",
+    tarih: "",
+    toplam: 0,
+  });
+  const [duzenlenenUrunler, setDuzenlenenUrunler] = useState<any[]>([]);
 
-  // Düzenlenebilir örnek ürün listesi state'i
-  const [duzenlenenUrunler, setDuzenlenenUrunler] = useState([
-    { id: 1, isim: "Elma 1kg", fiyat: "30,50" },
-    { id: 2, isim: "Süt 1L", fiyat: "25,00" },
-    { id: 3, isim: "Ekmek", fiyat: "8,50" },
-    { id: 4, isim: "Peynir 500g", fiyat: "89,90" },
-  ]);
+  useEffect(() => {
+    if (!id) return;
+    const veriGetir = async () => {
+      try {
+        const fisRef = doc(db, "Fisler", id as string);
+        const fisSnap = await getDoc(fisRef);
+        if (fisSnap.exists()) {
+          const data = fisSnap.data();
+          setFisDetay({
+            magaza: data.magaza_adi || "Mağaza",
+            tarih: data.tarih || "",
+            toplam: Number(data.toplam_tutar) || 0,
+          });
+        }
+        const urunlerRef = collection(db, "Urunler");
+        const q = query(urunlerRef, where("fis_id", "==", id));
+        const urunlerSnap = await getDocs(q);
 
-  const kategoriler = [
-    {
-      id: 1,
-      ad: "Sebze / Meyve",
-      kalem: 1,
-      toplam: "30,50 TL",
-      renk: "#4CAF50",
-      ikon: "nutrition",
-      detaylar: [{ isim: "Elma 1kg", fiyat: "30,50 TL" }],
-    },
-    {
-      id: 2,
-      ad: "Temizlik",
-      kalem: 2,
-      toplam: "120,00 TL",
-      renk: "#2196F3",
-      ikon: "water",
-      detaylar: [
-        { isim: "Çamaşır Suyu", fiyat: "45,00 TL" },
-        { isim: "Deterjan", fiyat: "75,00 TL" },
-      ],
-    },
-    {
-      id: 3,
-      ad: "Süt & Süt Ürünleri",
-      kalem: 2,
-      toplam: "54,00 TL",
-      renk: "#FF9800",
-      ikon: "pint",
-      detaylar: [
-        { isim: "Süt 1L", fiyat: "18,50 TL" },
-        { isim: "Yoğurt", fiyat: "35,50 TL" },
-      ],
-    },
-    {
-      id: 4,
-      ad: "İçecek",
-      kalem: 1,
-      toplam: "45,00 TL",
-      renk: "#795548",
-      ikon: "cafe",
-      detaylar: [{ isim: "Kahve", fiyat: "45,00 TL" }],
-    },
-    {
-      id: 5,
-      ad: "Diğer",
-      kalem: 2,
-      toplam: "40,00 TL",
-      renk: "#9C27B0",
-      ikon: "bag-handle",
-      detaylar: [
-        { isim: "Poşet", fiyat: "5,00 TL" },
-        { isim: "Naylon eldiven", fiyat: "35,00 TL" },
-      ],
-    },
-  ];
+        const geciciUrunler: any[] = [];
+        urunlerSnap.forEach((doc) => {
+          const urunData = doc.data();
+          geciciUrunler.push({
+            id: doc.id,
+            isim: urunData.urun_adi,
+            fiyat: Number(urunData.fiyat).toFixed(2).replace(".", ","),
+            kategori: urunData.kategori || "Diğer",
+          });
+        });
+        setDuzenlenenUrunler(geciciUrunler);
+      } catch (error) {
+        console.error(error);
+      } finally {
+        setYukleniyor(false);
+      }
+    };
+    veriGetir();
+  }, [id]);
 
-  // Ürün ismini güncelleme
-  const isimGuncelle = (text: string, id: number) => {
+  const isimGuncelle = (text: string, urunId: string) => {
     setDuzenlenenUrunler((prev) =>
-      prev.map((urun) => (urun.id === id ? { ...urun, isim: text } : urun)),
+      prev.map((urun) => (urun.id === urunId ? { ...urun, isim: text } : urun)),
     );
   };
 
-  // Ürün fiyatını güncelleme
-  const fiyatGuncelle = (text: string, id: number) => {
+  const fiyatGuncelle = (text: string, urunId: string) => {
     const safRakam = text.replace(/[^0-9,]/g, "");
     setDuzenlenenUrunler((prev) =>
       prev.map((urun) =>
-        urun.id === id ? { ...urun, fiyat: safRakam } : urun,
+        urun.id === urunId ? { ...urun, fiyat: safRakam } : urun,
       ),
     );
   };
 
-  // Ürünü listeden silme
-  const urunSil = (id: number) => {
-    setDuzenlenenUrunler((prev) => prev.filter((urun) => urun.id !== id));
+  const urunSil = (urunId: string) => {
+    setDuzenlenenUrunler((prev) => prev.filter((urun) => urun.id !== urunId));
   };
 
   const yeniUrunEkle = () => {
-    const yeniId = Date.now(); // Benzersiz rastgele ID
+    const yeniId = Date.now().toString();
     setDuzenlenenUrunler([
       ...duzenlenenUrunler,
-      { id: yeniId, isim: "", fiyat: "" },
+      { id: yeniId, isim: "", fiyat: "", kategori: "Diğer" },
     ]);
   };
+
+  // KATEGORİ DEĞİŞTİRME BUTONU MANTIĞI
+  const kategoriDegistir = (urunId: string) => {
+    const kategorilerDizisi = Object.keys(KATEGORI_AYARLARI);
+    setDuzenlenenUrunler((prev) =>
+      prev.map((u) => {
+        if (u.id === urunId) {
+          const currentIndex = kategorilerDizisi.indexOf(u.kategori || "Diğer");
+          const nextIndex = (currentIndex + 1) % kategorilerDizisi.length;
+          return { ...u, kategori: kategorilerDizisi[nextIndex] };
+        }
+        return u;
+      }),
+    );
+  };
+
+  const degisiklikleriFirebaseKaydet = async () => {
+    setDuzenleModalAcik(false);
+    setYukleniyor(true);
+    try {
+      const yeniToplam = duzenlenenUrunler.reduce(
+        (acc, u) => acc + Number(u.fiyat.replace(",", ".")),
+        0,
+      );
+      const fisRef = doc(db, "Fisler", id as string);
+      await updateDoc(fisRef, { toplam_tutar: yeniToplam });
+
+      const urunlerRef = collection(db, "Urunler");
+      const q = query(urunlerRef, where("fis_id", "==", id));
+      const eskiUrunlerSnap = await getDocs(q);
+
+      const silmeIslemleri = eskiUrunlerSnap.docs.map((d) =>
+        deleteDoc(doc(db, "Urunler", d.id)),
+      );
+      await Promise.all(silmeIslemleri);
+
+      const aktifUid = auth.currentUser?.uid;
+      const eklemeIslemleri = duzenlenenUrunler.map((urun) =>
+        addDoc(collection(db, "Urunler"), {
+          fis_id: id,
+          urun_adi: urun.isim,
+          fiyat: Number(urun.fiyat.replace(",", ".")),
+          kategori: urun.kategori,
+          kullanici_id: aktifUid,
+        }),
+      );
+      await Promise.all(eklemeIslemleri);
+
+      const yeniUrunlerSnap = await getDocs(q);
+      const guncelUrunler = yeniUrunlerSnap.docs.map((doc) => ({
+        id: doc.id,
+        isim: doc.data().urun_adi,
+        fiyat: Number(doc.data().fiyat).toFixed(2).replace(".", ","),
+        kategori: doc.data().kategori || "Diğer",
+      }));
+      setDuzenlenenUrunler(guncelUrunler);
+      setFisDetay((prev) => ({ ...prev, toplam: yeniToplam }));
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setYukleniyor(false);
+    }
+  };
+
+  // ÜRÜNLERİ KATEGORİYE GÖRE GRUPLA
+  const gruplanmisKategoriler = duzenlenenUrunler.reduce((acc: any, urun) => {
+    const kat = urun.kategori || "Diğer";
+    if (!acc[kat]) acc[kat] = { ad: kat, urunler: [], toplam: 0 };
+    acc[kat].urunler.push(urun);
+    acc[kat].toplam += Number(urun.fiyat.replace(",", "."));
+    return acc;
+  }, {});
+
+  const toplamHesaplanan = duzenlenenUrunler.reduce(
+    (acc, u) => acc + Number(u.fiyat.replace(",", ".")),
+    0,
+  );
+
+  if (yukleniyor) {
+    return (
+      <View
+        style={[
+          styles.anaEkran,
+          { justifyContent: "center", alignItems: "center" },
+        ]}
+      >
+        <ActivityIndicator size="large" color="#1DB954" />
+        <Text style={{ color: "rgba(255,255,255,0.5)", marginTop: 10 }}>
+          Veriler işleniyor...
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.anaEkran}>
@@ -140,21 +233,26 @@ export default function UrunDetayiScreen() {
           <View style={styles.ozetSolKisim}>
             <View style={styles.ozetHeader}>
               <View style={styles.ikonZemini}>
-                <Text style={styles.ikonHarf}>M</Text>
+                <Text style={styles.ikonHarf}>
+                  {fisDetay.magaza?.[0]?.toUpperCase() || "F"}
+                </Text>
               </View>
               <View>
-                <Text style={styles.magazaAd}>MİGROS ALIŞVERİŞİ</Text>
-                <Text style={styles.tarihMetin}>28 EKİM 2023</Text>
+                <Text style={styles.magazaAd}>
+                  {fisDetay.magaza.toUpperCase()}
+                </Text>
+                <Text style={styles.tarihMetin}>
+                  {fisDetay.tarih.toUpperCase()}
+                </Text>
               </View>
             </View>
-
             <View style={styles.bilgiSatiri}>
               <Ionicons
                 name="location-outline"
                 size={14}
                 color="rgba(255,255,255,0.35)"
               />
-              <Text style={styles.bilgiMetin}>Migros, Bağcılar Şubesi</Text>
+              <Text style={styles.bilgiMetin}>Kayıtlı Lokasyon</Text>
             </View>
             <View style={styles.bilgiSatiri}>
               <Ionicons
@@ -163,18 +261,18 @@ export default function UrunDetayiScreen() {
                 color="rgba(255,255,255,0.35)"
               />
               <Text style={styles.bilgiMetin}>
-                Market{" "}
-                <Text style={{ color: "rgba(255, 255, 255, 0.20)" }}>·</Text> 8
-                kalem
+                Fiş{" "}
+                <Text style={{ color: "rgba(255, 255, 255, 0.20)" }}>·</Text>{" "}
+                {duzenlenenUrunler.length} kalem
               </Text>
             </View>
-
             <View style={styles.tutarRozeti}>
-              <Text style={styles.tutarMetinGoster}>289,50</Text>
+              <Text style={styles.tutarMetinGoster}>
+                {toplamHesaplanan.toFixed(2).replace(".", ",")}
+              </Text>
               <Text style={styles.tutarMetinTL}> TL</Text>
             </View>
           </View>
-
           <View style={styles.miniFisKutu}>
             <View style={styles.fisUstCizgi} />
             <View style={styles.fisNoktaliAyrac} />
@@ -188,32 +286,42 @@ export default function UrunDetayiScreen() {
 
         <View style={styles.kategorilerBaslikSatiri}>
           <Text style={styles.altBaslik}>KATEGORİLER</Text>
-          <Text style={styles.urunSayisi}>8 ürün</Text>
+          <Text style={styles.urunSayisi}>{duzenlenenUrunler.length} ürün</Text>
         </View>
 
-        {kategoriler.map((kat) => (
-          <View key={kat.id} style={styles.kategoriKarti}>
+        {Object.values(gruplanmisKategoriler).map((kat: any) => (
+          <View key={kat.ad} style={styles.kategoriKarti}>
             <View style={styles.kategoriHeader}>
               <View
                 style={[
                   styles.kategoriIkonZemin,
-                  { backgroundColor: `${kat.renk}26` },
+                  {
+                    backgroundColor: `${KATEGORI_AYARLARI[kat.ad]?.renk || "#9C27B0"}26`,
+                  },
                 ]}
               >
-                <Ionicons name={kat.ikon as any} size={18} color={kat.renk} />
+                <Ionicons
+                  name={KATEGORI_AYARLARI[kat.ad]?.ikon || "bag-handle"}
+                  size={18}
+                  color={KATEGORI_AYARLARI[kat.ad]?.renk || "#9C27B0"}
+                />
               </View>
               <View style={styles.kategoriBaslikBilgi}>
                 <Text style={styles.kategoriAd}>{kat.ad}</Text>
-                <Text style={styles.kategoriKalem}>{kat.kalem} kalem</Text>
+                <Text style={styles.kategoriKalem}>
+                  {kat.urunler.length} kalem
+                </Text>
               </View>
-              <Text style={styles.kategoriToplamTutar}>{kat.toplam}</Text>
+              <Text style={styles.kategoriToplamTutar}>
+                {kat.toplam.toFixed(2).replace(".", ",")} TL
+              </Text>
             </View>
 
             <View style={styles.urunlerListesi}>
-              {kat.detaylar.map((urun, index) => (
+              {kat.urunler.map((urun: any, index: number) => (
                 <View key={index} style={styles.urunSatiri}>
                   <Text style={styles.urunAd}>
-                    · {urun.isim} — {urun.fiyat}
+                    · {urun.isim} — {urun.fiyat} TL
                   </Text>
                 </View>
               ))}
@@ -222,7 +330,6 @@ export default function UrunDetayiScreen() {
         ))}
       </ScrollView>
 
-      {/* ALT SABİT BUTON */}
       <View style={styles.altButonlarKapsayici}>
         <TouchableOpacity
           style={styles.altButonTekli}
@@ -248,12 +355,9 @@ export default function UrunDetayiScreen() {
           behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
           <View style={styles.modalKutu}>
-            {/* Tutamaç */}
             <View style={styles.tutuamacKapsayici}>
               <View style={styles.tutuamac} />
             </View>
-
-            {/* Başlık ve Kapat Butonu */}
             <View style={styles.modalUstBar}>
               <Text style={styles.modalBaslik}>Ürünleri Düzenle</Text>
               <TouchableOpacity
@@ -268,7 +372,6 @@ export default function UrunDetayiScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Ürün Listesi */}
             <ScrollView
               style={styles.duzenleListe}
               showsVerticalScrollIndicator={false}
@@ -276,7 +379,6 @@ export default function UrunDetayiScreen() {
             >
               {duzenlenenUrunler.map((urun) => (
                 <View key={urun.id} style={styles.duzenleSatiri}>
-                  {/* İsmi */}
                   <View style={styles.urunIsimInputZemini}>
                     <TextInput
                       style={styles.urunIsimInput}
@@ -289,7 +391,6 @@ export default function UrunDetayiScreen() {
                     />
                   </View>
 
-                  {/* Fiyatı */}
                   <View style={styles.urunFiyatInputZemini}>
                     <TextInput
                       style={styles.urunFiyatInput}
@@ -304,7 +405,23 @@ export default function UrunDetayiScreen() {
                     <Text style={styles.urunFiyatParaBirimi}>TL</Text>
                   </View>
 
-                  {/* Sil Butonu */}
+                  {/* EKLENEN KATEGORİ DEĞİŞTİRME BUTONU */}
+                  <TouchableOpacity
+                    onPress={() => kategoriDegistir(urun.id)}
+                    style={{
+                      marginLeft: 6,
+                      padding: 10,
+                      backgroundColor: `${KATEGORI_AYARLARI[urun.kategori || "Diğer"]?.renk}26`,
+                      borderRadius: 10,
+                    }}
+                  >
+                    <Ionicons
+                      name={KATEGORI_AYARLARI[urun.kategori || "Diğer"]?.ikon}
+                      size={18}
+                      color={KATEGORI_AYARLARI[urun.kategori || "Diğer"]?.renk}
+                    />
+                  </TouchableOpacity>
+
                   <TouchableOpacity
                     style={styles.urunSilButonu}
                     onPress={() => urunSil(urun.id)}
@@ -322,19 +439,17 @@ export default function UrunDetayiScreen() {
                 <Ionicons name="add" size={18} color="#1DB954" />
                 <Text style={styles.yeniUrunEkleMetni}>Yeni Ürün Ekle</Text>
               </TouchableOpacity>
-
               <View style={{ height: 20 }} />
             </ScrollView>
 
-            {/* Kaydet Butonu */}
             <View style={styles.modalAltButonKapsayici}>
               <TouchableOpacity
                 style={styles.degisiklikleriKaydetButonu}
                 activeOpacity={0.8}
-                onPress={() => setDuzenleModalAcik(false)}
+                onPress={degisiklikleriFirebaseKaydet}
               >
                 <Text style={styles.degisiklikleriKaydetMetni}>
-                  Değişiklikleri Kaydet
+                  Değişiklikleri Uygula
                 </Text>
               </TouchableOpacity>
             </View>
@@ -362,7 +477,6 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
   },
   sayfaBaslik: { color: "white", fontSize: 18, fontWeight: "700" },
-
   ozetKarti: {
     flexDirection: "row",
     marginHorizontal: 20,
@@ -440,7 +554,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginLeft: 4,
   },
-
   miniFisKutu: {
     width: 80,
     height: 110,
@@ -480,7 +593,6 @@ const styles = StyleSheet.create({
     marginTop: "auto",
     alignSelf: "flex-end",
   },
-
   kategorilerBaslikSatiri: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -495,7 +607,6 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   urunSayisi: { color: "#1DB954", fontSize: 11, fontWeight: "600" },
-
   kategoriKarti: {
     backgroundColor: "rgba(255, 255, 255, 0.04)",
     marginHorizontal: 20,
@@ -526,7 +637,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   kategoriToplamTutar: { color: "white", fontSize: 14, fontWeight: "700" },
-
   urunlerListesi: { paddingLeft: 52 },
   urunSatiri: { marginBottom: 6 },
   urunAd: {
@@ -534,7 +644,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "400",
   },
-
   altButonlarKapsayici: {
     position: "absolute",
     bottom: 20,
@@ -561,7 +670,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     letterSpacing: 0.5,
   },
-
   modalArkaPlan: {
     flex: 1,
     justifyContent: "flex-end",
@@ -581,11 +689,7 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     elevation: 20,
   },
-  tutuamacKapsayici: {
-    alignItems: "center",
-    paddingTop: 12,
-    marginBottom: 16,
-  },
+  tutuamacKapsayici: { alignItems: "center", paddingTop: 12, marginBottom: 16 },
   tutuamac: {
     width: 36,
     height: 4,
@@ -598,12 +702,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 20,
   },
-  modalBaslik: {
-    color: "white",
-    fontSize: 18,
-    fontFamily: "Inter",
-    fontWeight: "700",
-  },
+  modalBaslik: { color: "white", fontSize: 18, fontWeight: "700" },
   kapatIkonZemini: {
     width: 32,
     height: 32,
@@ -612,11 +711,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-
-  duzenleListe: {
-    flexGrow: 0,
-    maxHeight: 400,
-  },
+  duzenleListe: { flexGrow: 0, maxHeight: 400 },
   duzenleSatiri: {
     flexDirection: "row",
     alignItems: "center",
@@ -636,7 +731,6 @@ const styles = StyleSheet.create({
   urunIsimInput: {
     color: "rgba(255, 255, 255, 0.7)",
     fontSize: 14,
-    fontFamily: "Inter",
     fontWeight: "500",
     padding: 0,
   },
@@ -656,17 +750,11 @@ const styles = StyleSheet.create({
     flex: 1,
     color: "rgba(29, 185, 84, 0.70)",
     fontSize: 15,
-    fontFamily: "Inter",
     fontWeight: "700",
     textAlign: "right",
     padding: 0,
   },
-  urunFiyatParaBirimi: {
-    color: "#1DB954",
-    fontSize: 12,
-    fontFamily: "Inter",
-    fontWeight: "600",
-  },
+  urunFiyatParaBirimi: { color: "#1DB954", fontSize: 12, fontWeight: "600" },
   urunSilButonu: {
     width: 40,
     height: 40,
@@ -677,27 +765,24 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-
   yeniUrunEkleZemini: {
     height: 52,
     backgroundColor: "rgba(29, 185, 84, 0.06)",
     borderRadius: 12,
     borderWidth: 1,
     borderColor: "rgba(29, 185, 84, 0.30)",
-    flexDirection: "row", // Yan yana dizilim
+    flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
     marginTop: 4,
-    gap: 6, // İkon ve yazı arası boşluk
+    gap: 6,
   },
   yeniUrunEkleMetni: {
     color: "#1DB954",
     fontSize: 14,
-    fontFamily: "Inter",
     fontWeight: "600",
     letterSpacing: 0.2,
   },
-
   modalAltButonKapsayici: {
     paddingVertical: 20,
     borderTopWidth: 1,
@@ -721,7 +806,6 @@ const styles = StyleSheet.create({
   degisiklikleriKaydetMetni: {
     color: "white",
     fontSize: 16,
-    fontFamily: "Inter",
     fontWeight: "700",
     letterSpacing: 0.3,
   },

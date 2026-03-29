@@ -1,8 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
+import { CameraView, useCameraPermissions } from "expo-camera";
+import * as ImagePicker from "expo-image-picker"; // 1. Galeri paketini içeri aldık
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Animated,
   Dimensions,
   Easing,
@@ -17,6 +20,11 @@ const { width } = Dimensions.get("window");
 export default function KameraScreen() {
   const router = useRouter();
   const scanAnim = useRef(new Animated.Value(0)).current;
+
+  const [permission, requestPermission] = useCameraPermissions();
+  const [flash, setFlash] = useState<"off" | "on">("off");
+  const cameraRef = useRef<any>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
     Animated.loop(
@@ -37,9 +45,73 @@ export default function KameraScreen() {
     ).start();
   }, [scanAnim]);
 
+  // 2. Galeriye Gitme Fonksiyonu
+  const galeriyeGit = async () => {
+    // Galeriden resim seçme izni iste ve seçtir
+    let result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.8,
+    });
+
+    if (!result.canceled) {
+      console.log("Galeriden resim seçildi:", result.assets[0].uri);
+      router.push({
+        pathname: "/fisdogrulama",
+        params: { imageUri: result.assets[0].uri },
+      });
+    }
+  };
+
+  const fotografCek = async () => {
+    if (cameraRef.current && !isProcessing) {
+      try {
+        setIsProcessing(true);
+        const photo = await cameraRef.current.takePictureAsync({
+          quality: 0.7,
+        });
+
+        router.push({
+          pathname: "/fisdogrulama",
+          params: { imageUri: photo.uri },
+        });
+      } catch (e) {
+        console.error("Çekim hatası:", e);
+      } finally {
+        setIsProcessing(false);
+      }
+    }
+  };
+
+  if (!permission) return <View style={styles.anaEkran} />;
+
+  if (!permission.granted) {
+    return (
+      <View
+        style={[
+          styles.anaEkran,
+          { justifyContent: "center", alignItems: "center", padding: 20 },
+        ]}
+      >
+        <Text style={{ color: "white", textAlign: "center", marginBottom: 20 }}>
+          Kamera izni olmadan fişleri tarayamayız.
+        </Text>
+        <TouchableOpacity style={styles.izinButon} onPress={requestPermission}>
+          <Text style={{ color: "white", fontWeight: "700" }}>İzin Ver</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.anaEkran}>
-      {/* ÜST BAR */}
+      <CameraView
+        style={StyleSheet.absoluteFillObject}
+        facing="back"
+        enableTorch={flash === "on"} // Flash yerine enableTorch bazı cihazlarda daha iyi çalışır
+        ref={cameraRef}
+      />
+
       <View style={styles.ustBar}>
         <TouchableOpacity
           style={styles.ikonButon}
@@ -49,14 +121,18 @@ export default function KameraScreen() {
         </TouchableOpacity>
 
         <View style={styles.baslikKutu}>
-          <Text style={styles.baslikMetin}>Kamera Ekranı</Text>
+          <Text style={styles.baslikMetin}>Fiş Tarayıcı</Text>
         </View>
 
-        <TouchableOpacity style={styles.ikonButon}>
+        {/* Flaş Butonu Artık Çalışıyor */}
+        <TouchableOpacity
+          style={styles.ikonButon}
+          onPress={() => setFlash((f) => (f === "off" ? "on" : "off"))}
+        >
           <Ionicons
-            name="flash-off-outline"
+            name={flash === "on" ? "flash" : "flash-off-outline"}
             size={22}
-            color="rgba(255, 255, 255, 0.7)"
+            color={flash === "on" ? "#1DB954" : "rgba(255, 255, 255, 0.7)"}
           />
         </TouchableOpacity>
       </View>
@@ -65,7 +141,6 @@ export default function KameraScreen() {
         Fiş veya faturayı çerçeve içine hizalayın
       </Text>
 
-      {/* VİZÖR (TARAYICI) */}
       <View style={styles.vizorKapsayici}>
         <View style={[styles.kose, styles.koseSolUst]} />
         <View style={[styles.kose, styles.koseSagUst]} />
@@ -77,41 +152,42 @@ export default function KameraScreen() {
         />
 
         <View style={styles.rozetKapsayici}>
-          <Text style={styles.rozetMetin}>Fişi Buraya Hizalayın</Text>
+          <Text style={styles.rozetMetin}>Otomatik Algılama Hazır</Text>
         </View>
       </View>
 
       <View style={styles.altBilgiKapsayici}>
         <Text style={styles.altBilgiMetin}>
-          Otomatik algılama aktif · Işığı iyi olan bir ortamda
+          Işığı iyi olan bir ortamda çekim yapın
         </Text>
-        <Text style={styles.altBilgiMetin}>çekim yapın</Text>
       </View>
 
-      {/* ALT KONTROL BARI */}
       <LinearGradient
         colors={["transparent", "rgba(0,0,0,0.8)", "#000000"]}
         style={styles.altKontrolBari}
       >
-        {/* Sol Buton: Galeri */}
-        <TouchableOpacity style={styles.yanButon}>
+        {/* Galeri Butonu Artık Çalışıyor */}
+        <TouchableOpacity style={styles.yanButon} onPress={galeriyeGit}>
           <Ionicons name="image-outline" size={24} color="white" />
         </TouchableOpacity>
 
-        {/* Orta Buton: Çekim */}
         <TouchableOpacity
           style={styles.cekimButonu}
           activeOpacity={0.8}
-          onPress={() => router.push("/fisdogrulama")}
+          onPress={fotografCek}
+          disabled={isProcessing}
         >
           <View style={styles.cekimButonuIc}>
-            <Ionicons name="camera" size={28} color="#121212" />
+            {isProcessing ? (
+              <ActivityIndicator color="#1DB954" />
+            ) : (
+              <Ionicons name="camera" size={28} color="#121212" />
+            )}
           </View>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.manuelButon}
-          activeOpacity={0.8}
           onPress={() => router.push("/manuelfis")}
         >
           <Ionicons name="create-outline" size={22} color="#1DB954" />
@@ -121,98 +197,97 @@ export default function KameraScreen() {
   );
 }
 
+// Stillerin geri kalanı aynı, değiştirmene gerek yok...
 const styles = StyleSheet.create({
   anaEkran: { flex: 1, backgroundColor: "#0A0A0A" },
+  izinButon: {
+    backgroundColor: "#1DB954",
+    paddingHorizontal: 30,
+    paddingVertical: 15,
+    borderRadius: 16,
+  },
   ustBar: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 20,
     paddingTop: 60,
-    marginBottom: 40,
+    zIndex: 10,
   },
   ikonButon: {
-    width: 40,
-    height: 40,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
+    borderRadius: 22,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.1)",
+    borderColor: "rgba(255, 255, 255, 0.15)",
   },
   baslikKutu: {
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.1)",
+    borderColor: "rgba(255, 255, 255, 0.15)",
   },
-  baslikMetin: { color: "white", fontSize: 13, fontWeight: "600" },
-  bilgiMetin: {
-    color: "rgba(255, 255, 255, 0.45)",
+  baslikMetin: {
+    color: "white",
     fontSize: 13,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+  },
+  bilgiMetin: {
+    color: "white",
+    fontSize: 14,
     textAlign: "center",
-    marginBottom: 40,
+    marginTop: 20,
+    fontWeight: "500",
+    textShadowColor: "black",
+    textShadowRadius: 4,
   },
-  altBilgiKapsayici: { marginTop: 60, alignItems: "center" },
-  altBilgiMetin: {
-    color: "rgba(255, 255, 255, 0.3)",
-    fontSize: 12,
-    lineHeight: 18,
-  },
-
   vizorKapsayici: {
-    width: width * 0.75,
-    height: 300,
+    width: width * 0.8,
+    height: 340,
     alignSelf: "center",
     position: "relative",
-    backgroundColor: "rgba(29, 185, 84, 0.02)",
-    borderRadius: 16,
+    marginTop: 40,
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    borderRadius: 24,
   },
-  kose: {
-    position: "absolute",
-    width: 40,
-    height: 40,
-    borderColor: "#1DB954",
-    shadowColor: "#1DB954",
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 10,
-    elevation: 5,
-  },
+  kose: { position: "absolute", width: 30, height: 30, borderColor: "#1DB954" },
   koseSolUst: {
-    top: 0,
-    left: 0,
-    borderTopWidth: 3,
-    borderLeftWidth: 3,
-    borderTopLeftRadius: 16,
+    top: -2,
+    left: -2,
+    borderTopWidth: 4,
+    borderLeftWidth: 4,
+    borderTopLeftRadius: 24,
   },
   koseSagUst: {
-    top: 0,
-    right: 0,
-    borderTopWidth: 3,
-    borderRightWidth: 3,
-    borderTopRightRadius: 16,
+    top: -2,
+    right: -2,
+    borderTopWidth: 4,
+    borderRightWidth: 4,
+    borderTopRightRadius: 24,
   },
   koseSolAlt: {
-    bottom: 0,
-    left: 0,
-    borderBottomWidth: 3,
-    borderLeftWidth: 3,
-    borderBottomLeftRadius: 16,
+    bottom: -2,
+    left: -2,
+    borderBottomWidth: 4,
+    borderLeftWidth: 4,
+    borderBottomLeftRadius: 24,
   },
   koseSagAlt: {
-    bottom: 0,
-    right: 0,
-    borderBottomWidth: 3,
-    borderRightWidth: 3,
-    borderBottomRightRadius: 16,
+    bottom: -2,
+    right: -2,
+    borderBottomWidth: 4,
+    borderRightWidth: 4,
+    borderBottomRightRadius: 24,
   },
   lazerCizgi: {
     width: "90%",
-    height: 2,
+    height: 3,
     backgroundColor: "#1DB954",
     alignSelf: "center",
     position: "absolute",
@@ -220,57 +295,58 @@ const styles = StyleSheet.create({
     shadowColor: "#1DB954",
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 1,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowRadius: 10,
+    elevation: 10,
   },
   rozetKapsayici: {
     position: "absolute",
     bottom: 20,
     alignSelf: "center",
-    backgroundColor: "rgba(29, 185, 84, 0.20)",
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
     paddingHorizontal: 16,
     paddingVertical: 8,
-    borderRadius: 20,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: "rgba(29, 185, 84, 0.40)",
+    borderColor: "rgba(29, 185, 84, 0.5)",
   },
-  rozetMetin: { color: "#1DB954", fontSize: 11, fontWeight: "600" },
-
+  rozetMetin: { color: "#1DB954", fontSize: 11, fontWeight: "700" },
+  altBilgiKapsayici: { marginTop: 40, alignItems: "center" },
+  altBilgiMetin: {
+    color: "white",
+    fontSize: 12,
+    fontWeight: "600",
+    opacity: 0.8,
+  },
   altKontrolBari: {
     position: "absolute",
     bottom: 0,
     width: "100%",
-    height: 140,
+    height: 160,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 40,
-    paddingBottom: 20,
+    paddingBottom: 40,
   },
   yanButon: {
-    width: 50,
-    height: 50,
-    backgroundColor: "rgba(255, 255, 255, 0.1)",
-    borderRadius: 16,
+    width: 52,
+    height: 52,
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
+    borderRadius: 18,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.15)",
+    borderColor: "rgba(255, 255, 255, 0.2)",
   },
   cekimButonu: {
-    width: 76,
-    height: 76,
+    width: 84,
+    height: 84,
     backgroundColor: "white",
-    borderRadius: 38,
+    borderRadius: 42,
     justifyContent: "center",
     alignItems: "center",
-    shadowColor: "black",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.5,
-    shadowRadius: 24,
-    elevation: 10,
-    borderWidth: 4,
-    borderColor: "rgba(255, 255, 255, 0.15)",
+    borderWidth: 6,
+    borderColor: "rgba(255, 255, 255, 0.2)",
   },
   cekimButonuIc: {
     width: 68,
@@ -281,15 +357,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-
   manuelButon: {
-    width: 50,
-    height: 50,
-    backgroundColor: "rgba(29, 185, 84, 0.15)",
-    borderRadius: 16,
+    width: 52,
+    height: 52,
+    backgroundColor: "rgba(29, 185, 84, 0.2)",
+    borderRadius: 18,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "rgba(29, 185, 84, 0.30)",
+    borderColor: "rgba(29, 185, 84, 0.4)",
   },
 });

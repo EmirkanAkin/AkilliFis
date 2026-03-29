@@ -14,20 +14,35 @@ import {
   View,
 } from "react-native";
 
+// 1. ZUSTAND (BEYİN) İÇERİ AKTARILDI
+import { useStore } from "../store/useStore";
+
 export default function OnboardingScreen() {
   const router = useRouter();
+
+  // Lokal state (Ekranda yazarken anlık tuttuğumuz yer)
   const [isim, setIsim] = useState("");
+
+  // 2. ZUSTAND'DAN İSİM KAYDETME FONKSİYONUNU ÇEKTİK
+  // (Lokal state ile isimleri karışmasın diye adını setGlobalIsim yaptık)
+  const setGlobalIsim = useStore((state) => state.setIsim);
+
   const [odaklandiMi, setOdaklandiMi] = useState(false);
   const inputRef = useRef<TextInput>(null);
 
   const devamEt = () => {
+    // 3. BUTONA BASILINCA EKRANDAKİ İSMİ BEYNE (ZUSTAND) YAZIYORUZ
+    setGlobalIsim(isim);
+
+    // Sonraki sayfaya geçiyoruz
     router.push("/ilkgiris-butce");
   };
 
   return (
+    /* 🔥 BONUS DÜZELTME: Android'de klavye zıplamasın diye height yerine undefined yaptık */
     <KeyboardAvoidingView
       style={styles.anaEkran}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
         <View style={styles.icerik}>

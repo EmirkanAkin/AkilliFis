@@ -1,8 +1,8 @@
 import { useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import {
-  Animated,
   Keyboard,
+  KeyboardAvoidingView,
   Platform,
   StyleSheet,
   Text,
@@ -12,120 +12,89 @@ import {
   View,
 } from "react-native";
 
+// Zustand içeri aktarıldı
+import { useStore } from "../store/useStore";
+
 export default function IsimDuzenleModal() {
   const router = useRouter();
-  const [isim, setIsim] = useState("");
 
-  const [klavyeBoslugu] = useState(new Animated.Value(0));
+  // Zustand'dan kayıt fonksiyonu ve mevcut isim çekildi
+  const mevcutIsim = useStore((state) => state.isim);
+  const setGlobalIsim = useStore((state) => state.setIsim);
 
-  useEffect(() => {
-    // Klavye açıldığında boyunu ölç ve kartı o kadar yukarı it
-    const klavyeAcildi = Keyboard.addListener(
-      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
-      (e) => {
-        Animated.timing(klavyeBoslugu, {
-          toValue: e.endCoordinates.height,
-          duration: 250,
-          useNativeDriver: false,
-        }).start();
-      },
-    );
-
-    // Klavye kapandığında boşluğu sıfırla (Tam dibe oturur!)
-    const klavyeKapandi = Keyboard.addListener(
-      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide",
-      () => {
-        Animated.timing(klavyeBoslugu, {
-          toValue: 0,
-          duration: 250,
-          useNativeDriver: false,
-        }).start();
-      },
-    );
-
-    return () => {
-      klavyeAcildi.remove();
-      klavyeKapandi.remove();
-    };
-  }, []);
+  // Input'un varsayılan değerine mevcut isim atandı
+  const [isim, setIsim] = useState(mevcutIsim !== "Misafir" ? mevcutIsim : "");
 
   const onayla = () => {
-    console.log("Yeni İsim:", isim);
+    // Yeni isim Zustand'a kaydediliyor ve modal kapatılıyor
+    setGlobalIsim(isim);
     router.back();
   };
 
   return (
-    <Animated.View
-      style={[styles.modalZemin, { paddingBottom: klavyeBoslugu }]}
+    <KeyboardAvoidingView
+      style={styles.modalZemin}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      {/* 1. Üstteki Şeffaf Alan (Tıklayınca Kapanır) */}
-      <TouchableWithoutFeedback onPress={() => router.back()}>
+      <TouchableWithoutFeedback
+        onPress={() => {
+          Keyboard.dismiss();
+          router.back();
+        }}
+      >
         <View style={styles.seffafAlan} />
       </TouchableWithoutFeedback>
 
-      {/* 2. Asıl Modal İçeriği (Alttan Açılan Kart) */}
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <View style={styles.kartIcerik}>
-          {/* Tutma Çizgisi (Grabber) */}
-          <View style={styles.tutmaCizgisiKapsayici}>
-            <View style={styles.tutmaCizgisi} />
-          </View>
-
-          {/* Başlık */}
-          <Text style={styles.baslik}>İsim Düzenle</Text>
-
-          {/* Form Alanı */}
-          <View style={styles.formGrubu}>
-            <Text style={styles.etiket}>İsim</Text>
-            <View style={styles.inputZemin}>
-              <TextInput
-                style={styles.input}
-                placeholder="Emirkan"
-                placeholderTextColor="rgba(255, 255, 255, 0.50)"
-                value={isim}
-                onChangeText={setIsim}
-                autoFocus={true} // Açılır açılmaz klavye gelsin
-                autoCapitalize="words" // Kelimelerin ilk harfi büyük başlasın
-              />
-            </View>
-          </View>
-
-          {/* Onayla Butonu */}
-          <TouchableOpacity
-            style={[
-              styles.onaylaButon,
-              isim.trim() === "" && styles.onaylaButonPasif,
-            ]}
-            activeOpacity={0.8}
-            onPress={onayla}
-            disabled={isim.trim() === ""}
-          >
-            <Text
-              style={[
-                styles.onaylaButonMetin,
-                isim.trim() === "" && styles.onaylaButonMetinPasif,
-              ]}
-            >
-              Onayla
-            </Text>
-          </TouchableOpacity>
-
-          {/* En altta güvenli boşluk (iPhone çentiği vb. için) */}
-          <View style={{ height: 30 }} />
+      <View style={styles.kartIcerik}>
+        <View style={styles.tutmaCizgisiKapsayici}>
+          <View style={styles.tutmaCizgisi} />
         </View>
-      </TouchableWithoutFeedback>
-    </Animated.View>
+
+        <Text style={styles.baslik}>İsim Düzenle</Text>
+
+        <View style={styles.formGrubu}>
+          <Text style={styles.etiket}>İsim</Text>
+          <View style={styles.inputZemin}>
+            <TextInput
+              style={styles.input}
+              placeholder="İsminizi girin"
+              placeholderTextColor="rgba(255, 255, 255, 0.50)"
+              value={isim}
+              onChangeText={setIsim}
+              autoFocus={true}
+              autoCapitalize="words"
+            />
+          </View>
+        </View>
+
+        <TouchableOpacity
+          style={[
+            styles.onaylaButon,
+            isim.trim() === "" && styles.onaylaButonPasif,
+          ]}
+          activeOpacity={0.8}
+          onPress={onayla}
+          disabled={isim.trim() === ""}
+        >
+          <Text
+            style={[
+              styles.onaylaButonMetin,
+              isim.trim() === "" && styles.onaylaButonMetinPasif,
+            ]}
+          >
+            Onayla
+          </Text>
+        </TouchableOpacity>
+
+        <View style={{ height: Platform.OS === "ios" ? 30 : 20 }} />
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  modalZemin: {
-    flex: 1,
-    justifyContent: "flex-end",
-  },
-  seffafAlan: {
-    flex: 1,
-  },
+  modalZemin: { flex: 1, justifyContent: "flex-end" },
+  seffafAlan: { flex: 1 },
   kartIcerik: {
     backgroundColor: "#18181B",
     borderTopLeftRadius: 24,
@@ -153,16 +122,8 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255, 255, 255, 0.08)",
     borderRadius: 2,
   },
-  baslik: {
-    color: "white",
-    fontSize: 20,
-    fontWeight: "700",
-    marginBottom: 20,
-  },
-  formGrubu: {
-    gap: 10,
-    marginBottom: 24,
-  },
+  baslik: { color: "white", fontSize: 20, fontWeight: "700", marginBottom: 20 },
+  formGrubu: { gap: 10, marginBottom: 24 },
   etiket: {
     color: "rgba(255, 255, 255, 0.45)",
     fontSize: 12,
@@ -182,8 +143,9 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     color: "white",
-    fontSize: 16, // Figma'da 16px verilmiş
+    fontSize: 16,
     fontWeight: "500",
+    padding: 0,
   },
   onaylaButon: {
     backgroundColor: "#1DB954",
@@ -202,12 +164,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0,
     elevation: 0,
   },
-  onaylaButonMetin: {
-    color: "white",
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  onaylaButonMetinPasif: {
-    color: "rgba(255, 255, 255, 0.5)",
-  },
+  onaylaButonMetin: { color: "white", fontSize: 16, fontWeight: "700" },
+  onaylaButonMetinPasif: { color: "rgba(255, 255, 255, 0.5)" },
 });
