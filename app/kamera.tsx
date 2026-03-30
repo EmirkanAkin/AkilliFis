@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions } from "expo-camera";
-import * as ImagePicker from "expo-image-picker"; // 1. Galeri paketini içeri aldık
+import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
@@ -9,13 +9,19 @@ import {
   Animated,
   Dimensions,
   Easing,
+  Modal,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
 
+import { useStore } from "../store/useStore";
+
 const { width } = Dimensions.get("window");
+
+// 🔥 BURAYA GİZLİ SEKMEYLE ALDIĞIN YENİ ŞİFREYİ YAPIŞTIR 🔥
+const GEMINI_API_KEY = "AIzaSyChRJhb0E4G6j0ZqVwN238af5C2gEMyR60".trim();
 
 export default function KameraScreen() {
   const router = useRouter();
@@ -25,6 +31,11 @@ export default function KameraScreen() {
   const [flash, setFlash] = useState<"off" | "on">("off");
   const cameraRef = useRef<any>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  const [hataModalAcik, setHataModalAcik] = useState(false);
+  const [hataMesaji, setHataMesaji] = useState("");
+
+  const { setTempFis } = useStore();
 
   useEffect(() => {
     Animated.loop(
@@ -45,21 +56,131 @@ export default function KameraScreen() {
     ).start();
   }, [scanAnim]);
 
-  // 2. Galeriye Gitme Fonksiyonu
+  // 🔥 BÖLÜM SONU CANAVARI: AUTO-PİLOT MODEL SEÇİCİ 🔥
+  const yapayZekayaGonder = async (base64Image: string, imageUri: string) => {
+    setIsProcessing(true);
+    try {
+      console.log("1. Google'a açık modeller soruluyor...");
+
+      // ADIM 1: Şifrenin hangi modellere izni olduğunu Google'dan çekiyoruz
+      const modelsReq = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}`,
+      );
+      const modelsData = await modelsReq.json();
+
+      let secilenModel = "gemini-1.5-flash"; // Varsayılan
+
+      if (modelsData && modelsData.models) {
+        const acikModeller = modelsData.models.map((m: any) =>
+          m.name.replace("models/", ""),
+        );
+        console.log("2. Senin Şifrene Açık Modeller:", acikModeller);
+
+        // En iyi modeli akıllıca seçiyoruz
+        if (acikModeller.includes("gemini-1.5-flash"))
+          secilenModel = "gemini-1.5-flash";
+        else if (acikModeller.includes("gemini-1.5-pro"))
+          secilenModel = "gemini-1.5-pro";
+        else if (acikModeller.includes("gemini-pro-vision"))
+          secilenModel = "gemini-pro-vision";
+        else secilenModel = acikModeller[0]; // Hiçbiri yoksa bulduğu ilk modeli denesin
+      }
+
+      console.log(`3. Hedef Kilitlendi! Kullanılacak Model: ${secilenModel}`);
+
+      const prompt = `
+        Sen uzman bir fiş ve fatura okuma yapay zekasısın.
+        Gönderilen fiş/fatura görselini analiz et ve BANA SADECE AŞAĞIDAKİ JSON FORMATINDA CEVAP VER.
+        Başka hiçbir kelime, açıklama veya markdown kullanma. Sadece { ile başlayıp } ile biten JSON objesi ver.
+        
+        Format:
+        {
+          "magazaAdi": "Mağaza Adı",
+          "tarih": "DD.MM.YYYY",
+          "toplamTutar": 150.50,
+          "urunler": [
+            {
+              "ad": "Ürün 1",
+              "fiyat": 50.25,
+              "kategori": "Gıda"
+            }
+          ]
+        }
+
+        Kategori sadece şunlardan biri olabilir: Gıda, Temizlik, Kafe, Eğlence, Giyim, Diğer. Eğer tarihi bulamazsan bugünün tarihini at.
+      `;
+
+      const cleanBase64 = base64Image.replace(/^data:image\/\w+;base64,/, "");
+
+      // ADIM 2: Seçilen modele fotoğrafı fırlatıyoruz
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${secilenModel}:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  { text: prompt },
+                  { inlineData: { mimeType: "image/jpeg", data: cleanBase64 } },
+                ],
+              },
+            ],
+          }),
+        },
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          result.error?.message || "Google API sunucusu bağlantıyı reddetti.",
+        );
+      }
+
+      if (!result.candidates || result.candidates.length === 0) {
+        throw new Error("Yapay zeka fişi okuyamadı, metin bulunamadı.");
+      }
+
+      let aiText = result.candidates[0].content.parts[0].text;
+
+      const jsonMatch = aiText.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error("Yapay zeka geçerli bir JSON formatı döndürmedi.");
+      }
+
+      const parsedData = JSON.parse(jsonMatch[0]);
+
+      setTempFis({
+        magazaAdi: parsedData.magazaAdi || "Bilinmiyor",
+        tarih: parsedData.tarih || "",
+        toplamTutar: parsedData.toplamTutar || 0,
+        urunler: parsedData.urunler || [],
+      });
+
+      console.log("4. YAPAY ZEKA BAŞARIYLA OKUDU!");
+      router.push({ pathname: "/fisdogrulama", params: { imageUri } });
+    } catch (error: any) {
+      console.error("Yapay Zeka Hatası:", error.message);
+      setHataMesaji(`Okuma başarısız: ${error.message.substring(0, 80)}...`);
+      setHataModalAcik(true);
+      setTempFis({ magazaAdi: "", tarih: "", toplamTutar: 0, urunler: [] });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const galeriyeGit = async () => {
-    // Galeriden resim seçme izni iste ve seçtir
     let result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
-      quality: 0.8,
+      quality: 0.7,
+      base64: true,
     });
 
-    if (!result.canceled) {
-      console.log("Galeriden resim seçildi:", result.assets[0].uri);
-      router.push({
-        pathname: "/fisdogrulama",
-        params: { imageUri: result.assets[0].uri },
-      });
+    if (!result.canceled && result.assets[0].base64) {
+      await yapayZekayaGonder(result.assets[0].base64, result.assets[0].uri);
     }
   };
 
@@ -69,15 +190,15 @@ export default function KameraScreen() {
         setIsProcessing(true);
         const photo = await cameraRef.current.takePictureAsync({
           quality: 0.7,
+          base64: true,
+          shutterSound: false,
         });
 
-        router.push({
-          pathname: "/fisdogrulama",
-          params: { imageUri: photo.uri },
-        });
+        if (photo.base64) {
+          await yapayZekayaGonder(photo.base64, photo.uri);
+        }
       } catch (e) {
         console.error("Çekim hatası:", e);
-      } finally {
         setIsProcessing(false);
       }
     }
@@ -108,7 +229,7 @@ export default function KameraScreen() {
       <CameraView
         style={StyleSheet.absoluteFillObject}
         facing="back"
-        enableTorch={flash === "on"} // Flash yerine enableTorch bazı cihazlarda daha iyi çalışır
+        enableTorch={flash === "on"}
         ref={cameraRef}
       />
 
@@ -124,7 +245,6 @@ export default function KameraScreen() {
           <Text style={styles.baslikMetin}>Fiş Tarayıcı</Text>
         </View>
 
-        {/* Flaş Butonu Artık Çalışıyor */}
         <TouchableOpacity
           style={styles.ikonButon}
           onPress={() => setFlash((f) => (f === "off" ? "on" : "off"))}
@@ -152,7 +272,11 @@ export default function KameraScreen() {
         />
 
         <View style={styles.rozetKapsayici}>
-          <Text style={styles.rozetMetin}>Otomatik Algılama Hazır</Text>
+          <Text style={styles.rozetMetin}>
+            {isProcessing
+              ? "Yapay Zeka Analiz Ediyor..."
+              : "Otomatik Algılama Hazır"}
+          </Text>
         </View>
       </View>
 
@@ -166,8 +290,11 @@ export default function KameraScreen() {
         colors={["transparent", "rgba(0,0,0,0.8)", "#000000"]}
         style={styles.altKontrolBari}
       >
-        {/* Galeri Butonu Artık Çalışıyor */}
-        <TouchableOpacity style={styles.yanButon} onPress={galeriyeGit}>
+        <TouchableOpacity
+          style={styles.yanButon}
+          onPress={galeriyeGit}
+          disabled={isProcessing}
+        >
           <Ionicons name="image-outline" size={24} color="white" />
         </TouchableOpacity>
 
@@ -179,7 +306,7 @@ export default function KameraScreen() {
         >
           <View style={styles.cekimButonuIc}>
             {isProcessing ? (
-              <ActivityIndicator color="#1DB954" />
+              <ActivityIndicator color="#1DB954" size="large" />
             ) : (
               <Ionicons name="camera" size={28} color="#121212" />
             )}
@@ -189,15 +316,46 @@ export default function KameraScreen() {
         <TouchableOpacity
           style={styles.manuelButon}
           onPress={() => router.push("/manuelfis")}
+          disabled={isProcessing}
         >
           <Ionicons name="create-outline" size={22} color="#1DB954" />
         </TouchableOpacity>
       </LinearGradient>
+
+      {/* KARİZMATİK KOYU TEMA HATA MODALI */}
+      <Modal visible={hataModalAcik} transparent={true} animationType="fade">
+        <View style={styles.hataModalArkaPlan}>
+          <View style={styles.hataModalKutu}>
+            <View style={styles.hataIkonZemin}>
+              <Ionicons name="alert-circle" size={36} color="#FF6B6B" />
+            </View>
+            <Text style={styles.hataBaslik}>Sistem Uyarısı</Text>
+            <Text style={styles.hataMesajiMetni}>{hataMesaji}</Text>
+
+            <View style={styles.hataButonlarKapsayici}>
+              <TouchableOpacity
+                style={styles.hataKapatButon}
+                onPress={() => setHataModalAcik(false)}
+              >
+                <Text style={styles.hataKapatButonMetin}>Tekrar Dene</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.hataManuelButon}
+                onPress={() => {
+                  setHataModalAcik(false);
+                  router.push("/manuelfis");
+                }}
+              >
+                <Text style={styles.hataManuelButonMetin}>Manuel Ekle</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
 
-// Stillerin geri kalanı aynı, değiştirmene gerek yok...
 const styles = StyleSheet.create({
   anaEkran: { flex: 1, backgroundColor: "#0A0A0A" },
   izinButon: {
@@ -367,4 +525,71 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(29, 185, 84, 0.4)",
   },
+
+  hataModalArkaPlan: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.8)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 24,
+  },
+  hataModalKutu: {
+    width: "100%",
+    backgroundColor: "#18181B",
+    borderRadius: 24,
+    padding: 24,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255, 107, 107, 0.3)",
+    shadowColor: "#FF6B6B",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  hataIkonZemin: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "rgba(255, 107, 107, 0.1)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255, 107, 107, 0.3)",
+  },
+  hataBaslik: {
+    color: "white",
+    fontSize: 20,
+    fontWeight: "800",
+    marginBottom: 8,
+  },
+  hataMesajiMetni: {
+    color: "rgba(255, 255, 255, 0.6)",
+    fontSize: 14,
+    textAlign: "center",
+    lineHeight: 22,
+    marginBottom: 24,
+  },
+  hataButonlarKapsayici: { width: "100%", gap: 12 },
+  hataKapatButon: {
+    width: "100%",
+    height: 50,
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.2)",
+  },
+  hataKapatButonMetin: { color: "white", fontSize: 15, fontWeight: "700" },
+  hataManuelButon: {
+    width: "100%",
+    height: 50,
+    backgroundColor: "#1DB954",
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  hataManuelButonMetin: { color: "white", fontSize: 15, fontWeight: "700" },
 });

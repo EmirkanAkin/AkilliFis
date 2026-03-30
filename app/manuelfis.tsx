@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -15,6 +16,10 @@ import {
   View,
 } from "react-native";
 import { Calendar, LocaleConfig } from "react-native-calendars";
+
+// FİREBASE BAĞLANTILARI EKLENDİ
+import { addDoc, collection, serverTimestamp } from "firebase/firestore";
+import { auth, db } from "../firebaseConfig";
 
 LocaleConfig.locales["tr"] = {
   monthNames: [
@@ -65,6 +70,8 @@ export default function ManuelEkleScreen() {
   const magazaRef = useRef<TextInput>(null);
   const miktarRef = useRef<TextInput>(null);
 
+  const [yukleniyor, setYukleniyor] = useState(false);
+
   const [magaza, setMagaza] = useState("");
   const [miktar, setMiktar] = useState("");
   const [odaklananKutu, setOdaklananKutu] = useState<
@@ -79,13 +86,18 @@ export default function ManuelEkleScreen() {
   const [kategoriModalAcik, setKategoriModalAcik] = useState(false);
   const [yeniKategori, setYeniKategori] = useState("");
   const [kategoriListesi, setKategoriListesi] = useState([
-    "Market",
+    "Gıda",
+    "Temizlik",
     "Kafe",
-    "Ulaşım",
-    "Fatura",
     "Eğlence",
     "Giyim",
+    "Diğer",
   ]);
+
+  // YENİ: İSTEĞE BAĞLI ÜRÜN KALEMLERİ İÇİN STATE'LER
+  const [urunler, setUrunler] = useState<{ isim: string; fiyat: string }[]>([]);
+  const [yeniUrunIsim, setYeniUrunIsim] = useState("");
+  const [yeniUrunFiyat, setYeniUrunFiyat] = useState("");
 
   const miktarDegisti = (metin: string) => {
     const safRakam = metin.replace(/[^0-9]/g, "");
@@ -97,8 +109,19 @@ export default function ManuelEkleScreen() {
     setMiktar(formatli);
   };
 
+  const yeniUrunFiyatDegisti = (metin: string) => {
+    const safRakam = metin.replace(/[^0-9]/g, "");
+    if (safRakam === "") {
+      setYeniUrunFiyat("");
+      return;
+    }
+    setYeniUrunFiyat(safRakam.replace(/\B(?=(\d{3})+(?!\d))/g, "."));
+  };
+
   const takvimGunSecildi = (day: any) => {
-    setSeciliTarihStr(day.dateString);
+    const formatliTarih = day.dateString.split("-").reverse().join("."); // YYYY-MM-DD to DD.MM.YYYY
+    setSeciliTarihStr(formatliTarih);
+
     const secilenTarihObj = new Date(day.timestamp);
     const aylar = [
       "Oca",
@@ -128,14 +151,93 @@ export default function ManuelEkleScreen() {
     }
   };
 
+  // ÜRÜN EKLEME FONKSİYONU
+  const urunEkle = () => {
+    if (yeniUrunIsim.trim() && yeniUrunFiyat.trim()) {
+      const yeniUrun = { isim: yeniUrunIsim.trim(), fiyat: yeniUrunFiyat };
+      const yeniUrunler = [...urunler, yeniUrun];
+      setUrunler(yeniUrunler);
+      setYeniUrunIsim("");
+      setYeniUrunFiyat("");
+
+      // Ürün eklenince toplam miktarı otomatik güncelle
+      const toplam = yeniUrunler.reduce(
+        (acc, u) => acc + Number(u.fiyat.replace(/\./g, "")),
+        0,
+      );
+      setMiktar(toplam.toString().replace(/\B(?=(\d{3})+(?!\d))/g, "."));
+    }
+  };
+
+  const urunSil = (index: number) => {
+    const yeniUrunler = urunler.filter((_, i) => i !== index);
+    setUrunler(yeniUrunler);
+
+    // Ürün silinince toplam miktarı otomatik güncelle
+    const toplam = yeniUrunler.reduce(
+      (acc, u) => acc + Number(u.fiyat.replace(/\./g, "")),
+      0,
+    );
+    setMiktar(
+      toplam > 0 ? toplam.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".") : "",
+    );
+  };
+
   const formDolu =
     magaza.trim() !== "" &&
     miktar.trim() !== "" &&
     seciliTarihStr !== "" &&
     kategori.trim() !== "";
 
-  const kaydet = () => {
-    if (formDolu) router.push("/(tabs)");
+  // GERÇEK FİREBASE KAYIT FONKSİYONU
+  const kaydet = async () => {
+    if (!formDolu) return;
+    setYukleniyor(true);
+
+    try {
+      const aktifUid = auth.currentUser?.uid;
+      if (!aktifUid) return;
+
+      const asilToplam = Number(miktar.replace(/\./g, ""));
+
+      // 1. Fişi Kaydet
+      const fisRef = await addDoc(collection(db, "Fisler"), {
+        kullanici_id: aktifUid,
+        magaza_adi: magaza.trim(),
+        tarih: seciliTarihStr,
+        toplam_tutar: asilToplam,
+        olusturulma_tarihi: serverTimestamp(),
+      });
+
+      // 2. Ürünleri Kaydet (Senin istediğin UrunDetay uyumluluğu burada başlıyor)
+      if (urunler.length > 0) {
+        // Adam kalem kalem ürün girdiyse
+        for (const urun of urunler) {
+          await addDoc(collection(db, "Urunler"), {
+            fis_id: fisRef.id,
+            urun_adi: urun.isim,
+            fiyat: Number(urun.fiyat.replace(/\./g, "")),
+            kategori: kategori, // Manuel fişte tüm kalemlere aynı kategoriyi veriyoruz
+            kullanici_id: aktifUid,
+          });
+        }
+      } else {
+        // Adam sadece toplam tutar girdiyse, UrunDetay sayfası bozulmasın diye tek bir "Genel Harcama" kalemi oluştur.
+        await addDoc(collection(db, "Urunler"), {
+          fis_id: fisRef.id,
+          urun_adi: "Genel Harcama",
+          fiyat: asilToplam,
+          kategori: kategori,
+          kullanici_id: aktifUid,
+        });
+      }
+
+      router.push("/(tabs)");
+    } catch (error) {
+      console.error("Kaydetme hatası:", error);
+    } finally {
+      setYukleniyor(false);
+    }
   };
 
   return (
@@ -196,69 +298,16 @@ export default function ManuelEkleScreen() {
             <TextInput
               ref={magazaRef}
               style={styles.standartInput}
-              placeholder="Örn: Migros"
+              placeholder="Örn: Starbucks, Berber vs."
               placeholderTextColor="rgba(255, 255, 255, 0.30)"
               value={magaza}
               onChangeText={setMagaza}
               onFocus={() => setOdaklananKutu("magaza")}
               onBlur={() => setOdaklananKutu(null)}
-              selectionColor="transparent"
+              selectionColor="#1DB954"
               cursorColor="#1DB954"
               autoCapitalize="words"
             />
-          </Pressable>
-        </View>
-
-        {/* HARCAMA MİKTARI */}
-        <View style={styles.girdiGrubu}>
-          <View style={styles.etiketSatir}>
-            <Ionicons
-              name="wallet-outline"
-              size={14}
-              color={
-                odaklananKutu === "miktar"
-                  ? "#1DB954"
-                  : "rgba(255, 255, 255, 0.45)"
-              }
-            />
-            <Text
-              style={[
-                styles.etiketMetin,
-                odaklananKutu === "miktar" && { color: "#1DB954" },
-              ]}
-            >
-              Harcama Miktarı
-            </Text>
-          </View>
-          <Pressable
-            style={[
-              styles.neonInputZemin,
-              odaklananKutu === "miktar" && styles.inputOdakli,
-            ]}
-            onPress={() => miktarRef.current?.focus()}
-          >
-            <TextInput
-              ref={miktarRef}
-              style={styles.neonInput}
-              placeholder="0,00"
-              placeholderTextColor="rgba(255, 255, 255, 0.30)"
-              keyboardType="numeric"
-              value={miktar}
-              onChangeText={miktarDegisti}
-              onFocus={() => setOdaklananKutu("miktar")}
-              onBlur={() => setOdaklananKutu(null)}
-              selectionColor="transparent"
-              cursorColor="#1DB954"
-              maxLength={10}
-            />
-            <Text
-              style={[
-                styles.paraBirimi,
-                odaklananKutu === "miktar" && { color: "#1DB954" },
-              ]}
-            >
-              TL
-            </Text>
           </Pressable>
         </View>
 
@@ -283,10 +332,10 @@ export default function ManuelEkleScreen() {
             <Text
               style={[
                 styles.standartInputMetni,
-                !seciliTarihStr && { color: "rgba(255, 255, 255, 0.30)" },
+                !ekrandaGozukenTarih && { color: "rgba(255, 255, 255, 0.30)" },
               ]}
             >
-              {seciliTarihStr ? ekrandaGozukenTarih : "Tarih seçin"}
+              {ekrandaGozukenTarih ? ekrandaGozukenTarih : "Tarih seçin"}
             </Text>
             <Ionicons
               name="calendar"
@@ -329,6 +378,112 @@ export default function ManuelEkleScreen() {
             />
           </TouchableOpacity>
         </View>
+
+        {/* YENİ: İSTEĞE BAĞLI ÜRÜN KALEMLERİ EKLENDİ */}
+        <View style={styles.girdiGrubu}>
+          <View style={styles.etiketSatir}>
+            <Ionicons
+              name="list-outline"
+              size={14}
+              color="rgba(255, 255, 255, 0.45)"
+            />
+            <Text style={styles.etiketMetin}>
+              Ürün Kalemleri (İsteğe Bağlı)
+            </Text>
+          </View>
+
+          {urunler.map((u, i) => (
+            <View key={i} style={styles.urunKalemSatiri}>
+              <View style={styles.urunKalemSol}>
+                <Text style={styles.urunKalemIsim}>{u.isim}</Text>
+              </View>
+              <Text style={styles.urunKalemFiyat}>{u.fiyat} TL</Text>
+              <TouchableOpacity
+                onPress={() => urunSil(i)}
+                style={styles.urunKalemSil}
+              >
+                <Ionicons name="close" size={16} color="#FF6B6B" />
+              </TouchableOpacity>
+            </View>
+          ))}
+
+          <View style={styles.yeniUrunSatiri}>
+            <TextInput
+              style={[styles.standartInput, styles.yeniUrunInputIsim]}
+              placeholder="Örn: Kahve"
+              placeholderTextColor="rgba(255,255,255,0.2)"
+              value={yeniUrunIsim}
+              onChangeText={setYeniUrunIsim}
+              cursorColor="#1DB954"
+            />
+            <TextInput
+              style={[styles.standartInput, styles.yeniUrunInputFiyat]}
+              placeholder="Tutar"
+              placeholderTextColor="rgba(255,255,255,0.2)"
+              keyboardType="numeric"
+              value={yeniUrunFiyat}
+              onChangeText={yeniUrunFiyatDegisti}
+              cursorColor="#1DB954"
+            />
+            <TouchableOpacity style={styles.yeniUrunEkleBtn} onPress={urunEkle}>
+              <Ionicons name="add" size={20} color="white" />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* HARCAMA MİKTARI (NEON) - Alta alındı ki ürün ekledikçe gözünün önünde değişsin */}
+        <View style={[styles.girdiGrubu, { marginTop: 10 }]}>
+          <View style={styles.etiketSatir}>
+            <Ionicons
+              name="wallet-outline"
+              size={14}
+              color={
+                odaklananKutu === "miktar"
+                  ? "#1DB954"
+                  : "rgba(255, 255, 255, 0.45)"
+              }
+            />
+            <Text
+              style={[
+                styles.etiketMetin,
+                odaklananKutu === "miktar" && { color: "#1DB954" },
+              ]}
+            >
+              Toplam Tutar
+            </Text>
+          </View>
+          <Pressable
+            style={[
+              styles.neonInputZemin,
+              odaklananKutu === "miktar" && styles.inputOdakli,
+            ]}
+            onPress={() => miktarRef.current?.focus()}
+          >
+            <TextInput
+              ref={miktarRef}
+              style={styles.neonInput}
+              placeholder="0"
+              placeholderTextColor="rgba(255, 255, 255, 0.30)"
+              keyboardType="numeric"
+              value={miktar}
+              onChangeText={miktarDegisti}
+              onFocus={() => setOdaklananKutu("miktar")}
+              onBlur={() => setOdaklananKutu(null)}
+              selectionColor="#1DB954"
+              cursorColor="#1DB954"
+              maxLength={10}
+            />
+            <Text
+              style={[
+                styles.paraBirimi,
+                odaklananKutu === "miktar" && { color: "#1DB954" },
+              ]}
+            >
+              TL
+            </Text>
+          </Pressable>
+        </View>
+
         <View style={{ height: 40 }} />
       </ScrollView>
 
@@ -338,16 +493,20 @@ export default function ManuelEkleScreen() {
           style={[styles.kaydetButon, !formDolu && styles.kaydetButonPasif]}
           activeOpacity={0.8}
           onPress={kaydet}
-          disabled={!formDolu}
+          disabled={!formDolu || yukleniyor}
         >
-          <Text
-            style={[
-              styles.kaydetButonMetin,
-              !formDolu && styles.kaydetButonMetinPasif,
-            ]}
-          >
-            Kaydet
-          </Text>
+          {yukleniyor ? (
+            <ActivityIndicator color="white" />
+          ) : (
+            <Text
+              style={[
+                styles.kaydetButonMetin,
+                !formDolu && styles.kaydetButonMetinPasif,
+              ]}
+            >
+              Harcamayı Kaydet
+            </Text>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -379,14 +538,8 @@ export default function ManuelEkleScreen() {
                 selectedDayTextColor: "#ffffff",
                 todayTextColor: "#1DB954",
                 dayTextColor: "#ffffff",
-                textDisabledColor: "rgba(255, 255, 255, 0.2)",
                 arrowColor: "#1DB954",
                 monthTextColor: "white",
-                textDayFontWeight: "500",
-                textMonthFontWeight: "bold",
-                textDayHeaderFontWeight: "bold",
-                textDayFontSize: 16,
-                textMonthFontSize: 16,
               }}
             />
           </View>
@@ -454,7 +607,6 @@ export default function ManuelEkleScreen() {
                 placeholderTextColor="rgba(255,255,255,0.3)"
                 value={yeniKategori}
                 onChangeText={setYeniKategori}
-                selectionColor="transparent"
                 cursorColor="#1DB954"
               />
               <TouchableOpacity
@@ -510,7 +662,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
 
-  // STANDART İNPUT
   standartInputZemin: {
     backgroundColor: "#18181B",
     borderRadius: 16,
@@ -522,19 +673,78 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
-  standartInput: { flex: 1, color: "white", fontSize: 16, fontWeight: "500" },
+  standartInput: { flex: 1, color: "white", fontSize: 15, fontWeight: "500" },
   standartInputMetni: {
     flex: 1,
     color: "white",
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "500",
-  }, // Buton içindeki metin için ayrı stil
+  },
   inputOdakli: {
     borderColor: "#1DB954",
     backgroundColor: "rgba(29, 185, 84, 0.05)",
   },
 
-  // NEON İNPUT (MİKTAR)
+  // YENİ EKLENEN ÜRÜN KALEMİ STİLLERİ
+  urunKalemSatiri: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.03)",
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.05)",
+  },
+  urunKalemSol: { flex: 1 },
+  urunKalemIsim: {
+    color: "rgba(255,255,255,0.8)",
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  urunKalemFiyat: {
+    color: "#1DB954",
+    fontSize: 14,
+    fontWeight: "700",
+    marginHorizontal: 12,
+  },
+  urunKalemSil: {
+    width: 28,
+    height: 28,
+    backgroundColor: "rgba(255,107,107,0.1)",
+    borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  yeniUrunSatiri: { flexDirection: "row", gap: 8, alignItems: "center" },
+  yeniUrunInputIsim: {
+    backgroundColor: "#18181B",
+    height: 50,
+    paddingHorizontal: 15,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+  yeniUrunInputFiyat: {
+    flex: 0.5,
+    backgroundColor: "#18181B",
+    height: 50,
+    paddingHorizontal: 15,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    textAlign: "right",
+  },
+  yeniUrunEkleBtn: {
+    width: 50,
+    height: 50,
+    backgroundColor: "rgba(29, 185, 84, 0.2)",
+    borderWidth: 1,
+    borderColor: "#1DB954",
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
   neonInputZemin: {
     backgroundColor: "#18181B",
     borderRadius: 16,
