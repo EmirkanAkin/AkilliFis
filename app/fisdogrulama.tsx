@@ -1,12 +1,15 @@
 import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useRef, useState } from "react";
 import {
+  Alert,
   Modal,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -60,40 +63,137 @@ LocaleConfig.locales["tr"] = {
 };
 LocaleConfig.defaultLocale = "tr";
 
+// VARSAYILAN KATEGORİ LİSTEMİZ
+const VARSAYILAN_KATEGORILER = [
+  "Gıda",
+  "Temizlik",
+  "Kafe",
+  "Eğlence",
+  "Giyim",
+  "Diğer",
+];
+
 export default function FisDogrulamaScreen() {
   const router = useRouter();
   const { imageUri } = useLocalSearchParams();
   const { uid, tempFis, setTempFis } = useStore();
   const [tarihModalAcik, setTarihModalAcik] = useState(false);
 
+  // MANUEL DÜZENLEME STATE'LERİ
+  const [urunModalAcik, setUrunModalAcik] = useState(false);
+  const [secilenUrunIndex, setSecilenUrunIndex] = useState<number | null>(null);
+  const [geciciAd, setGeciciAd] = useState("");
+  const [geciciFiyat, setGeciciFiyat] = useState("");
+  const [geciciKategori, setGeciciKategori] = useState("Diğer");
+
+  // ÖZEL KATEGORİ EKLEME STATE'LERİ VE REF
+  const [ozelKategoriler, setOzelKategoriler] = useState<string[]>([]);
+  const [kategoriEklemeModu, setKategoriEklemeModu] = useState(false);
+  const [yeniKategoriAd, setYeniKategoriAd] = useState("");
+  const kategoriScrollRef = useRef<ScrollView>(null);
+
   const anlikToplam = tempFis.urunler.reduce(
     (acc, item) => acc + (Number(item.fiyat) || 0),
     0,
   );
 
-  useEffect(() => {
-    if (imageUri && tempFis.magazaAdi === "") {
-      setTempFis({
-        magazaAdi: "A101 MARKET",
-        tarih: "29.03.2024",
-        toplamTutar: 94.0,
-        urunler: [
-          { ad: "Elma (1kg)", fiyat: 30.5, kategori: "Gıda" },
-          { ad: "Çamaşır Suyu", fiyat: 45.0, kategori: "Temizlik" },
-          { ad: "Süt 1L", fiyat: 18.5, kategori: "Gıda" },
-        ],
-      });
-    }
-  }, [imageUri]);
+  const tumKategoriler = [...VARSAYILAN_KATEGORILER, ...ozelKategoriler];
 
   const takvimdenSec = (day: any) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const d = new Date(day.timestamp);
     const formatliTarih = `${d.getDate().toString().padStart(2, "0")}.${(d.getMonth() + 1).toString().padStart(2, "0")}.${d.getFullYear()}`;
     setTempFis({ tarih: formatliTarih });
     setTarihModalAcik(false);
   };
 
+  // ÜRÜN DÜZENLEME FONKSİYONLARI
+  const urunDuzenle = (index: number) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSecilenUrunIndex(index);
+    setGeciciAd(tempFis.urunler[index].ad);
+    setGeciciFiyat(tempFis.urunler[index].fiyat.toString());
+
+    const urunKategorisi = tempFis.urunler[index].kategori || "Diğer";
+    if (
+      !tumKategoriler.includes(urunKategorisi) &&
+      urunKategorisi !== "Diğer"
+    ) {
+      setOzelKategoriler((prev) => [...prev, urunKategorisi]);
+    }
+
+    setGeciciKategori(urunKategorisi);
+    setKategoriEklemeModu(false);
+    setUrunModalAcik(true);
+  };
+
+  const yeniUrunEkle = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setSecilenUrunIndex(null);
+    setGeciciAd("");
+    setGeciciFiyat("");
+    setGeciciKategori("Diğer");
+    setKategoriEklemeModu(false);
+    setUrunModalAcik(true);
+  };
+
+  const urunKaydet = () => {
+    if (!geciciAd.trim() || !geciciFiyat.trim()) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert("Eksik Bilgi", "Lütfen ürün adı ve fiyatını girin.");
+      return;
+    }
+
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    const yeniUrunler = [...tempFis.urunler];
+    const fiyatFloat = parseFloat(geciciFiyat.replace(",", "."));
+
+    if (secilenUrunIndex !== null) {
+      yeniUrunler[secilenUrunIndex] = {
+        ...yeniUrunler[secilenUrunIndex],
+        ad: geciciAd,
+        fiyat: fiyatFloat,
+        kategori: geciciKategori,
+      };
+    } else {
+      yeniUrunler.push({
+        ad: geciciAd,
+        fiyat: fiyatFloat,
+        kategori: geciciKategori,
+      });
+    }
+
+    setTempFis({ urunler: yeniUrunler });
+    setUrunModalAcik(false);
+  };
+
+  const urunSil = () => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    if (secilenUrunIndex !== null) {
+      const yeniUrunler = tempFis.urunler.filter(
+        (_, i) => i !== secilenUrunIndex,
+      );
+      setTempFis({ urunler: yeniUrunler });
+    }
+    setUrunModalAcik(false);
+  };
+
+  // KATEGORİ EKLEME FONKSİYONU
+  const ozelKategoriKaydet = () => {
+    if (yeniKategoriAd.trim()) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      const yeniKat = yeniKategoriAd.trim();
+      if (!tumKategoriler.includes(yeniKat)) {
+        setOzelKategoriler([...ozelKategoriler, yeniKat]);
+      }
+      setGeciciKategori(yeniKat);
+    }
+    setKategoriEklemeModu(false);
+    setYeniKategoriAd("");
+  };
+
   const harcamayiKaydet = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     const aktifUid = uid || auth.currentUser?.uid;
     if (!aktifUid) return router.push("/(tabs)");
 
@@ -102,6 +202,7 @@ export default function FisDogrulamaScreen() {
         kullanici_id: aktifUid,
         magaza_adi: tempFis.magazaAdi,
         tarih: tempFis.tarih,
+        kategori: tempFis.kategori || "Diğer", // DÜZELTİLDİ
         toplam_tutar: anlikToplam,
         olusturulma_tarihi: serverTimestamp(),
       });
@@ -110,13 +211,20 @@ export default function FisDogrulamaScreen() {
           fis_id: fisRef.id,
           urun_adi: urun.ad,
           fiyat: urun.fiyat,
-          kategori: urun.kategori || "Diğer", // KATEGORİ ARTIK FİREBASE'E GİDİYOR
+          kategori: urun.kategori || "Diğer",
           kullanici_id: aktifUid,
         });
       }
-      setTempFis({ magazaAdi: "", urunler: [], toplamTutar: 0 });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setTempFis({
+        magazaAdi: "",
+        urunler: [],
+        toplamTutar: 0,
+        kategori: "", // DÜZELTİLDİ
+      });
       router.push("/(tabs)");
     } catch (e) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       router.push("/(tabs)");
     }
   };
@@ -126,7 +234,10 @@ export default function FisDogrulamaScreen() {
       <View style={styles.ustBar}>
         <TouchableOpacity
           style={styles.geriButon}
-          onPress={() => router.back()}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.back();
+          }}
         >
           <Ionicons name="arrow-back" size={24} color="white" />
         </TouchableOpacity>
@@ -160,7 +271,9 @@ export default function FisDogrulamaScreen() {
             </View>
             <View>
               <Text style={styles.kartBaslik}>Fiş Özeti</Text>
-              <Text style={styles.kartAciklama}>Veriler havuzdan çekildi</Text>
+              <Text style={styles.kartAciklama}>
+                {tempFis.kategori || "Diğer"} {/* DÜZELTİLDİ */}
+              </Text>
             </View>
           </LinearGradient>
 
@@ -175,11 +288,14 @@ export default function FisDogrulamaScreen() {
                     color="#1DB954"
                   />
                   <Text style={styles.bilgiMetin}>
-                    {tempFis.magazaAdi || "Okunuyor..."}
+                    {tempFis.magazaAdi || "Bilinmiyor"}
                   </Text>
                 </View>
                 <TouchableOpacity
-                  onPress={() => router.push("/MagazaDuzenleme")}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    router.push("/MagazaDuzenleme");
+                  }}
                 >
                   <Ionicons name="create-outline" size={16} color="#1DB954" />
                 </TouchableOpacity>
@@ -195,7 +311,12 @@ export default function FisDogrulamaScreen() {
                     {tempFis.tarih || "Seçilmedi"}
                   </Text>
                 </View>
-                <TouchableOpacity onPress={() => setTarihModalAcik(true)}>
+                <TouchableOpacity
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    setTarihModalAcik(true);
+                  }}
+                >
                   <Ionicons name="create-outline" size={18} color="#1DB954" />
                 </TouchableOpacity>
               </View>
@@ -207,14 +328,42 @@ export default function FisDogrulamaScreen() {
               </Text>
               <View style={styles.urunListesi}>
                 {tempFis.urunler.map((item, index) => (
-                  <View key={index} style={styles.urunSatir}>
-                    <Text style={styles.urunAd}>{item.ad}</Text>
-                    <Text style={styles.urunFiyat}>
-                      {item.fiyat.toFixed(2)} TL
-                    </Text>
-                  </View>
+                  <TouchableOpacity
+                    key={index}
+                    style={styles.urunSatir}
+                    activeOpacity={0.7}
+                    onPress={() => urunDuzenle(index)}
+                  >
+                    <View style={styles.urunSol}>
+                      <Text style={styles.urunAd} numberOfLines={1}>
+                        {item.ad}
+                      </Text>
+                      <Text style={styles.urunKategoriMetin}>
+                        {item.kategori || "Diğer"}
+                      </Text>
+                    </View>
+                    <View style={styles.urunSag}>
+                      <Text style={styles.urunFiyat}>
+                        {item.fiyat.toFixed(2)} TL
+                      </Text>
+                      <Ionicons
+                        name="chevron-forward"
+                        size={14}
+                        color="rgba(255,255,255,0.3)"
+                        style={{ marginLeft: 4 }}
+                      />
+                    </View>
+                  </TouchableOpacity>
                 ))}
               </View>
+
+              <TouchableOpacity
+                style={styles.yeniUrunButon}
+                onPress={yeniUrunEkle}
+              >
+                <Ionicons name="add-circle-outline" size={18} color="#1DB954" />
+                <Text style={styles.yeniUrunMetin}>Yeni Ürün Ekle</Text>
+              </TouchableOpacity>
             </View>
 
             <LinearGradient
@@ -238,12 +387,18 @@ export default function FisDogrulamaScreen() {
         </TouchableOpacity>
       </ScrollView>
 
+      {/* TAKVİM MODALI */}
       <Modal visible={tarihModalAcik} transparent={true} animationType="fade">
         <View style={styles.takvimZemin}>
           <View style={styles.takvimKutu}>
             <View style={styles.takvimUst}>
               <Text style={styles.takvimBaslik}>Tarih Düzenle</Text>
-              <TouchableOpacity onPress={() => setTarihModalAcik(false)}>
+              <TouchableOpacity
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setTarihModalAcik(false);
+                }}
+              >
                 <Ionicons
                   name="close-circle"
                   size={28}
@@ -253,7 +408,11 @@ export default function FisDogrulamaScreen() {
             </View>
             <Calendar
               onDayPress={takvimdenSec}
-              markedDates={{ [tempFis.tarih]: { selected: true } }}
+              markedDates={{
+                [tempFis.tarih.split(".").reverse().join("-")]: {
+                  selected: true,
+                },
+              }}
               maxDate={new Date().toISOString().split("T")[0]}
               theme={{
                 calendarBackground: "#18181B",
@@ -266,6 +425,150 @@ export default function FisDogrulamaScreen() {
                 monthTextColor: "white",
               }}
             />
+          </View>
+        </View>
+      </Modal>
+
+      {/* ÜRÜN DÜZENLEME / EKLEME MODALI (KATEGORİLİ VE YENİ KATEGORİ EKLEMELİ) */}
+      <Modal visible={urunModalAcik} transparent={true} animationType="slide">
+        <View style={styles.modalZemin}>
+          <View style={styles.modalKutu}>
+            <View style={styles.takvimUst}>
+              <Text style={styles.takvimBaslik}>
+                {secilenUrunIndex !== null ? "Ürün Düzenle" : "Yeni Ürün Ekle"}
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setUrunModalAcik(false);
+                  setKategoriEklemeModu(false);
+                }}
+              >
+                <Ionicons
+                  name="close-circle"
+                  size={28}
+                  color="rgba(255,255,255,0.4)"
+                />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>ÜRÜN ADI</Text>
+              <TextInput
+                style={styles.textInput}
+                value={geciciAd}
+                onChangeText={setGeciciAd}
+                placeholder="Örn: Süt 1L"
+                placeholderTextColor="rgba(255,255,255,0.3)"
+              />
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>FİYAT (TL)</Text>
+              <TextInput
+                style={styles.textInput}
+                value={geciciFiyat}
+                onChangeText={setGeciciFiyat}
+                placeholder="Örn: 25.50"
+                placeholderTextColor="rgba(255,255,255,0.3)"
+                keyboardType="numeric"
+              />
+            </View>
+
+            {/* KATEGORİ SEÇİCİ VE EKLEYİCİ */}
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>KATEGORİ</Text>
+              <ScrollView
+                ref={kategoriScrollRef}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ gap: 8, paddingRight: 20 }}
+              >
+                {tumKategoriler.map((kat) => (
+                  <TouchableOpacity
+                    key={kat}
+                    style={[
+                      styles.kategoriChip,
+                      geciciKategori === kat && styles.kategoriChipAktif,
+                    ]}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setGeciciKategori(kat);
+                      setKategoriEklemeModu(false);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.kategoriChipMetin,
+                        geciciKategori === kat && styles.kategoriChipMetinAktif,
+                      ]}
+                    >
+                      {kat}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+
+                {/* YENİ KATEGORİ EKLEME BÖLÜMÜ */}
+                {kategoriEklemeModu ? (
+                  <View style={styles.yeniKategoriInputKutu}>
+                    <TextInput
+                      style={styles.yeniKategoriInput}
+                      value={yeniKategoriAd}
+                      onChangeText={setYeniKategoriAd}
+                      placeholder="Adı..."
+                      placeholderTextColor="rgba(255,255,255,0.3)"
+                      autoFocus
+                      onSubmitEditing={ozelKategoriKaydet}
+                    />
+                    <TouchableOpacity
+                      style={styles.yeniKategoriOnayButon}
+                      onPress={ozelKategoriKaydet}
+                    >
+                      <Ionicons name="checkmark" size={16} color="white" />
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.kategoriEkleChip}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setKategoriEklemeModu(true);
+                      setTimeout(() => {
+                        kategoriScrollRef.current?.scrollToEnd({
+                          animated: true,
+                        });
+                      }, 100);
+                    }}
+                  >
+                    <Ionicons
+                      name="add"
+                      size={16}
+                      color="rgba(255,255,255,0.6)"
+                    />
+                    <Text style={styles.kategoriEkleChipMetin}>Ekle</Text>
+                  </TouchableOpacity>
+                )}
+              </ScrollView>
+            </View>
+
+            <View style={styles.modalButonlar}>
+              {secilenUrunIndex !== null ? (
+                <TouchableOpacity style={styles.silButon} onPress={urunSil}>
+                  <Ionicons name="trash-outline" size={24} color="#FF6B6B" />
+                </TouchableOpacity>
+              ) : (
+                <View style={{ width: 50 }} />
+              )}
+
+              <TouchableOpacity
+                style={styles.modalKaydetButon}
+                onPress={urunKaydet}
+              >
+                <Text style={styles.modalKaydetMetin}>
+                  Değişiklikleri Kaydet
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -373,10 +676,43 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     paddingVertical: 12,
   },
-  urunListesi: { gap: 6, marginBottom: 8 },
-  urunSatir: { flexDirection: "row", justifyContent: "space-between" },
-  urunAd: { color: "rgba(255, 255, 255, 0.55)", fontSize: 12 },
-  urunFiyat: { color: "rgba(255, 255, 255, 0.55)", fontSize: 12 },
+  urunListesi: { gap: 8, marginBottom: 12 },
+  urunSatir: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.02)",
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.05)",
+  },
+  urunSol: { flex: 1, paddingRight: 10, gap: 4 },
+  urunSag: { flexDirection: "row", alignItems: "center" },
+  urunAd: {
+    color: "rgba(255, 255, 255, 0.9)",
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  urunKategoriMetin: {
+    color: "#1DB954",
+    fontSize: 11,
+    fontWeight: "600",
+    opacity: 0.8,
+  },
+  urunFiyat: { color: "white", fontSize: 14, fontWeight: "700" },
+  yeniUrunButon: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 10,
+    backgroundColor: "rgba(29, 185, 84, 0.1)",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(29, 185, 84, 0.3)",
+  },
+  yeniUrunMetin: { color: "#1DB954", fontSize: 13, fontWeight: "600" },
   toplamKutusu: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -400,6 +736,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   kaydetButonMetin: { color: "white", fontSize: 15, fontWeight: "700" },
+
   takvimZemin: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.8)",
@@ -420,4 +757,124 @@ const styles = StyleSheet.create({
     marginBottom: 15,
   },
   takvimBaslik: { color: "white", fontSize: 18, fontWeight: "800" },
+
+  modalZemin: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.8)",
+    justifyContent: "flex-end",
+  },
+  modalKutu: {
+    backgroundColor: "#18181B",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: 40,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.05)",
+  },
+  inputContainer: { marginBottom: 16 },
+  inputLabel: {
+    color: "rgba(255,255,255,0.5)",
+    fontSize: 12,
+    fontWeight: "600",
+    marginBottom: 8,
+    letterSpacing: 0.5,
+  },
+  textInput: {
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderRadius: 12,
+    padding: 14,
+    color: "white",
+    fontSize: 15,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+  },
+  modalButonlar: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 10,
+    gap: 12,
+  },
+  silButon: {
+    width: 50,
+    height: 50,
+    backgroundColor: "rgba(255, 107, 107, 0.1)",
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255, 107, 107, 0.3)",
+  },
+  modalKaydetButon: {
+    flex: 1,
+    height: 50,
+    backgroundColor: "#1DB954",
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalKaydetMetin: { color: "white", fontSize: 15, fontWeight: "700" },
+
+  kategoriChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+  },
+  kategoriChipAktif: {
+    backgroundColor: "rgba(29, 185, 84, 0.15)",
+    borderColor: "#1DB954",
+  },
+  kategoriChipMetin: {
+    color: "rgba(255,255,255,0.6)",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  kategoriChipMetinAktif: { color: "#1DB954" },
+
+  kategoriEkleChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: "transparent",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+    borderStyle: "dashed",
+    gap: 4,
+  },
+  kategoriEkleChipMetin: {
+    color: "rgba(255,255,255,0.6)",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  yeniKategoriInputKutu: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderRadius: 20,
+    paddingLeft: 12,
+    paddingRight: 4,
+    borderWidth: 1,
+    borderColor: "#1DB954",
+  },
+  yeniKategoriInput: {
+    color: "white",
+    fontSize: 13,
+    minWidth: 80,
+    paddingVertical: 8,
+  },
+  yeniKategoriOnayButon: {
+    backgroundColor: "#1DB954",
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    justifyContent: "center",
+    alignItems: "center",
+    marginLeft: 4,
+  },
 });

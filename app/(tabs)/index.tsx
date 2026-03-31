@@ -22,6 +22,32 @@ import {
 import { auth, db } from "../../firebaseConfig";
 import { useStore } from "../../store/useStore";
 
+// Tarihi kısaltan yardımcı fonksiyon
+const kisaTarihFormati = (tarih: any) => {
+  if (!tarih) return "";
+  if (typeof tarih === "string") {
+    const parcalar = tarih.split(" ");
+    if (parcalar.length >= 3 && !isNaN(Number(parcalar[0]))) {
+      return `${parcalar[0]} ${parcalar[1]}`;
+    }
+    const dateObj = new Date(
+      tarih.includes(".") ? tarih.split(".").reverse().join("-") : tarih,
+    );
+    if (!isNaN(dateObj.getTime())) {
+      return dateObj.toLocaleDateString("tr-TR", {
+        day: "numeric",
+        month: "long",
+      });
+    }
+  }
+  if (tarih?.toDate) {
+    return tarih
+      .toDate()
+      .toLocaleDateString("tr-TR", { day: "numeric", month: "long" });
+  }
+  return tarih;
+};
+
 export default function HomeScreen() {
   const router = useRouter();
   const scrollRef = useRef<ScrollView>(null);
@@ -29,14 +55,66 @@ export default function HomeScreen() {
   const [yukleniyor, setYukleniyor] = useState(true);
   const [harcamalar, setHarcamalar] = useState<any[]>([]);
 
-  const toplamHarcamaTutari = harcamalar.reduce(
-    (toplam, h) => toplam + (Number(h.toplam_tutar) || 0),
-    0,
-  );
+  // BÜTÇE VE HARCAMA HESAPLAMALARI
+  const simdi = new Date();
+  const mevcutAy = simdi.getMonth();
+  const mevcutYil = simdi.getFullYear();
+
+  let buAyHarcama = 0;
+  let gecenAyHarcama = 0;
+
+  harcamalar.forEach((h) => {
+    let dateObj = new Date();
+    if (h.olusturulma_tarihi?.toDate) {
+      dateObj = h.olusturulma_tarihi.toDate();
+    } else if (typeof h.tarih === "string") {
+      const parts = h.tarih.split(".");
+      if (parts.length === 3) {
+        dateObj = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+      } else {
+        dateObj = new Date(h.tarih);
+      }
+    }
+
+    const hAy = dateObj.getMonth();
+    const hYil = dateObj.getFullYear();
+
+    if (hAy === mevcutAy && hYil === mevcutYil) {
+      buAyHarcama += Number(h.toplam_tutar) || 0;
+    } else if (
+      (mevcutAy === 0 && hAy === 11 && hYil === mevcutYil - 1) ||
+      (mevcutAy > 0 && hAy === mevcutAy - 1 && hYil === mevcutYil)
+    ) {
+      gecenAyHarcama += Number(h.toplam_tutar) || 0;
+    }
+  });
+
   const butceSayi = Number(butce?.replace(/\./g, "") || 0);
-  const dolulukYuzdesi =
-    butceSayi > 0 ? (toplamHarcamaTutari / butceSayi) * 100 : 0;
-  const kalanPara = butceSayi - toplamHarcamaTutari;
+  const dolulukYuzdesi = butceSayi > 0 ? (buAyHarcama / butceSayi) * 100 : 0;
+  const kalanPara = butceSayi - buAyHarcama;
+
+  // UI İÇİN GEÇEN AY KIYASLAMA METNİ VE İKONU
+  let harcamaFarkiMetni = "";
+  let harcamaFarkiIkon = "remove-outline";
+  let harcamaFarkiRenk = "rgba(255, 255, 255, 0.50)";
+
+  if (gecenAyHarcama === 0) {
+    harcamaFarkiMetni = "Geçen ay veri yok";
+  } else {
+    const fark = buAyHarcama - gecenAyHarcama;
+    if (fark > 0) {
+      harcamaFarkiMetni = `${fark.toLocaleString("tr-TR")} TL daha fazla`;
+      harcamaFarkiIkon = "trending-up";
+      harcamaFarkiRenk = "#FF4B4B";
+    } else if (fark < 0) {
+      harcamaFarkiMetni = `${Math.abs(fark).toLocaleString("tr-TR")} TL daha az`;
+      harcamaFarkiIkon = "trending-down";
+      harcamaFarkiRenk = "#1DB954";
+    } else {
+      harcamaFarkiMetni = "Geçen ayla aynı";
+      harcamaFarkiRenk = "#1DB954";
+    }
+  }
 
   useEffect(() => {
     const aktifUid = uid || auth.currentUser?.uid;
@@ -99,6 +177,7 @@ export default function HomeScreen() {
       <ScrollView
         ref={scrollRef}
         style={styles.bosAnaEkran}
+        contentContainerStyle={{ paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.kapsayiciBos}>
@@ -151,7 +230,6 @@ export default function HomeScreen() {
             </View>
           </View>
         </View>
-        <View style={{ height: 40 }} />
       </ScrollView>
     );
   }
@@ -161,6 +239,7 @@ export default function HomeScreen() {
     <ScrollView
       ref={scrollRef}
       style={styles.doluAnaEkran}
+      contentContainerStyle={{ paddingBottom: 100 }} // DÜZELTME: Tam kararında boşluk bırakıldı
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.ustBilgiKutusu}>
@@ -168,10 +247,6 @@ export default function HomeScreen() {
           <Text style={styles.merhabaYazisi}>MERHABA</Text>
           <Text style={styles.isimYazisi}>{isim} 👋</Text>
         </View>
-        <TouchableOpacity activeOpacity={0.6} style={styles.profilIkonu}>
-          <Ionicons name="notifications-outline" size={22} color="white" />
-          <View style={styles.aktifNoktasi} />
-        </TouchableOpacity>
       </View>
 
       <LinearGradient
@@ -181,7 +256,7 @@ export default function HomeScreen() {
         <Text style={styles.kartBaslik}>TOPLAM HARCAMA (BU AY)</Text>
         <View style={styles.paraKutusu}>
           <Text style={styles.paraMiktari}>
-            {toplamHarcamaTutari.toLocaleString("tr-TR")}
+            {buAyHarcama.toLocaleString("tr-TR")}
           </Text>
           <Text style={styles.paraBirimi}>TL</Text>
         </View>
@@ -205,13 +280,23 @@ export default function HomeScreen() {
         </View>
         <View style={styles.istatistikKutusu}>
           <View style={styles.istatistikOgesi}>
-            <Ionicons name="trending-up" size={16} color="#1DB954" />
-            <Text style={styles.istatistikYazisi}>Sistem Aktif</Text>
+            <Ionicons
+              name={harcamaFarkiIkon as any}
+              size={16}
+              color={harcamaFarkiRenk}
+            />
+            <Text
+              style={[styles.istatistikYazisi, { color: harcamaFarkiRenk }]}
+            >
+              {harcamaFarkiMetni}
+            </Text>
           </View>
           <View style={styles.istatistikOgesi}>
             <Ionicons name="trending-down" size={16} color="#FF4B4B" />
             <Text style={[styles.istatistikYazisi, { color: "#FF4B4B" }]}>
-              {kalanPara.toLocaleString("tr-TR")} TL kaldı
+              {kalanPara > 0
+                ? `${kalanPara.toLocaleString("tr-TR")} TL kaldı`
+                : "Bütçe aşıldı"}
             </Text>
           </View>
         </View>
@@ -233,7 +318,6 @@ export default function HomeScreen() {
           <Text style={styles.butonMetni}>Harcama Ekle</Text>
         </TouchableOpacity>
 
-        {/* DÜZELTİLEN YER: GEÇMİŞİ GÖR BUTONU ARTIK ÇALIŞIYOR */}
         <TouchableOpacity
           style={styles.butonGrup}
           activeOpacity={0.7}
@@ -267,10 +351,18 @@ export default function HomeScreen() {
 
       <View style={styles.listeBaslikSatiri}>
         <Text style={styles.listeBasligi}>Son Harcamalar</Text>
+        <TouchableOpacity
+          style={styles.tumuButonu}
+          activeOpacity={0.6}
+          onPress={() => router.push("/harcamalar")}
+        >
+          <Text style={styles.tumuMetin}>Tümü</Text>
+          <Ionicons name="chevron-forward" size={14} color="#1DB954" />
+        </TouchableOpacity>
       </View>
 
       <View style={styles.listeKutusu}>
-        {harcamalar.map((item) => (
+        {harcamalar.slice(0, 5).map((item) => (
           <TouchableOpacity
             key={item.id}
             style={styles.harcamaOgesi}
@@ -279,23 +371,32 @@ export default function HomeScreen() {
               router.push({ pathname: "/urundetay", params: { id: item.id } })
             }
           >
-            <View style={[styles.ikonZemini, { backgroundColor: "#1DB954" }]}>
+            <View style={styles.ikonZemini}>
               <Text style={styles.ikonHarf}>{item.magaza_adi?.[0] || "?"}</Text>
             </View>
+
             <View style={styles.harcamaBilgi}>
               <Text style={styles.harcamaAd}>{item.magaza_adi}</Text>
-              <Text style={styles.harcamaKategori}>{item.tarih}</Text>
+              <Text style={styles.harcamaKategori}>
+                {item.kategori || "Market"} · {kisaTarihFormati(item.tarih)}
+              </Text>
             </View>
-            <Text style={styles.harcamaTutar}>-{item.toplam_tutar} TL</Text>
+
+            <View style={styles.harcamaSagTaraf}>
+              <Text style={styles.harcamaTutar}>-{item.toplam_tutar} TL</Text>
+              <Ionicons
+                name="chevron-forward"
+                size={16}
+                color="rgba(255, 255, 255, 0.40)"
+              />
+            </View>
           </TouchableOpacity>
         ))}
       </View>
-      <View style={{ height: 40 }} />
     </ScrollView>
   );
 }
 
-// STİLLER AYNI (Senin orijinal stillerin)
 const styles = StyleSheet.create({
   bosAnaEkran: {
     flex: 1,
@@ -409,25 +510,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   isimYazisi: { color: "white", fontSize: 24, fontWeight: "700" },
-  profilIkonu: {
-    width: 42,
-    height: 42,
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
-    borderRadius: 14,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  aktifNoktasi: {
-    width: 8,
-    height: 8,
-    backgroundColor: "#1DB954",
-    borderRadius: 4,
-    position: "absolute",
-    top: 8,
-    right: 10,
-    borderWidth: 1.5,
-    borderColor: "#000000",
-  },
   butceKarti: {
     borderRadius: 24,
     borderWidth: 1,
@@ -474,7 +556,11 @@ const styles = StyleSheet.create({
   cubukDolgu: { height: "100%", borderRadius: 3 },
   istatistikKutusu: { flexDirection: "row", marginTop: 16, gap: 16 },
   istatistikOgesi: { flexDirection: "row", alignItems: "center", gap: 6 },
-  istatistikYazisi: { color: "rgba(255, 255, 255, 0.50)", fontSize: 11 },
+  istatistikYazisi: {
+    color: "rgba(255, 255, 255, 0.50)",
+    fontSize: 11,
+    fontWeight: "500",
+  },
   butonlarSatiri: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -513,30 +599,57 @@ const styles = StyleSheet.create({
     marginBottom: 15,
   },
   listeBasligi: { color: "white", fontSize: 18, fontWeight: "700" },
+  tumuButonu: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+  },
+  tumuMetin: {
+    color: "#1DB954",
+    fontSize: 14,
+    fontWeight: "500",
+  },
   listeKutusu: { gap: 12 },
   harcamaOgesi: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
-    padding: 14,
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     borderRadius: 16,
-    borderWidth: 1.5,
-    borderColor: "rgba(255, 255, 255, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.06)",
   },
   ikonZemini: {
     width: 42,
     height: 42,
+    backgroundColor: "#1DB954",
     borderRadius: 13,
     justifyContent: "center",
     alignItems: "center",
+    shadowColor: "#1DB954",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 6,
   },
   ikonHarf: { color: "white", fontSize: 16, fontWeight: "800" },
-  harcamaBilgi: { flex: 1, marginLeft: 12 },
+  harcamaBilgi: {
+    flex: 1,
+    marginLeft: 12,
+    justifyContent: "center",
+    gap: 2,
+  },
   harcamaAd: { color: "white", fontSize: 14, fontWeight: "600" },
   harcamaKategori: {
-    color: "rgba(255, 255, 255, 0.4)",
+    color: "rgba(255, 255, 255, 0.40)",
     fontSize: 12,
-    marginTop: 2,
+    fontWeight: "500",
+  },
+  harcamaSagTaraf: {
+    alignItems: "flex-end",
+    justifyContent: "center",
+    gap: 2,
   },
   harcamaTutar: { color: "white", fontSize: 14, fontWeight: "700" },
 });

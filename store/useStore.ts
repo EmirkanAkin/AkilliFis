@@ -13,6 +13,7 @@ interface TempFis {
   magazaAdi: string;
   tarih: string;
   toplamTutar: number;
+  kategori: string; // <-- fisKategorisi BURADA kategori OLARAK DÜZELTİLDİ
   urunler: any[];
 }
 
@@ -21,13 +22,11 @@ interface HafizaTipi {
   isim: string;
   butce: string;
   harcamalar: Harcama[];
-  // GEÇİCİ FİŞ VERİSİ
   tempFis: TempFis;
   setUid: (yeniUid: string) => void;
   setIsim: (yeniIsim: string) => void;
   setButce: (yeniButce: string) => void;
   setHarcamalar: (liste: Harcama[]) => void;
-  // Fiş verisini güncelleyen fonksiyon
   setTempFis: (veri: Partial<TempFis>) => void;
   toplamHarcama: () => number;
 }
@@ -42,13 +41,13 @@ export const useStore = create<HafizaTipi>((set, get) => ({
     magazaAdi: "",
     tarih: "",
     toplamTutar: 0,
+    kategori: "", // <-- BURADA DA kategori OLARAK DÜZELTİLDİ
     urunler: [],
   },
   setUid: (yeniUid) => set({ uid: yeniUid }),
   setIsim: (yeniIsim) => set({ isim: yeniIsim }),
   setButce: (yeniButce) => set({ butce: yeniButce }),
   setHarcamalar: (liste) => set({ harcamalar: liste }),
-  // Mevcut veriyi koruyarak sadece değişeni günceller
   setTempFis: (veri) =>
     set((state) => ({
       tempFis: { ...state.tempFis, ...veri },

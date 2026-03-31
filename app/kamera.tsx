@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions } from "expo-camera";
+import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
@@ -20,8 +21,20 @@ import { useStore } from "../store/useStore";
 
 const { width } = Dimensions.get("window");
 
-// 🔥 BURAYA GİZLİ SEKMEYLE ALDIĞIN YENİ ŞİFREYİ YAPIŞTIR 🔥
+// ŞİFREN BURADA
 const GEMINI_API_KEY = "AIzaSyChRJhb0E4G6j0ZqVwN238af5C2gEMyR60".trim();
+
+// MADDE 16: METNİ OTOMATİK DÜZELTEN FONKSİYON (Title Case)
+const metniDuzenle = (metin: string) => {
+  if (!metin) return "";
+  return metin
+    .toLocaleLowerCase("tr-TR")
+    .split(" ")
+    .map(
+      (kelime) => kelime.charAt(0).toLocaleUpperCase("tr-TR") + kelime.slice(1),
+    )
+    .join(" ");
+};
 
 export default function KameraScreen() {
   const router = useRouter();
@@ -56,48 +69,47 @@ export default function KameraScreen() {
     ).start();
   }, [scanAnim]);
 
-  // 🔥 BÖLÜM SONU CANAVARI: AUTO-PİLOT MODEL SEÇİCİ 🔥
   const yapayZekayaGonder = async (base64Image: string, imageUri: string) => {
     setIsProcessing(true);
     try {
-      console.log("1. Google'a açık modeller soruluyor...");
-
-      // ADIM 1: Şifrenin hangi modellere izni olduğunu Google'dan çekiyoruz
       const modelsReq = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}`,
       );
       const modelsData = await modelsReq.json();
 
-      let secilenModel = "gemini-1.5-flash"; // Varsayılan
+      let secilenModel = "gemini-1.5-flash";
 
       if (modelsData && modelsData.models) {
         const acikModeller = modelsData.models.map((m: any) =>
           m.name.replace("models/", ""),
         );
-        console.log("2. Senin Şifrene Açık Modeller:", acikModeller);
-
-        // En iyi modeli akıllıca seçiyoruz
         if (acikModeller.includes("gemini-1.5-flash"))
           secilenModel = "gemini-1.5-flash";
         else if (acikModeller.includes("gemini-1.5-pro"))
           secilenModel = "gemini-1.5-pro";
         else if (acikModeller.includes("gemini-pro-vision"))
           secilenModel = "gemini-pro-vision";
-        else secilenModel = acikModeller[0]; // Hiçbiri yoksa bulduğu ilk modeli denesin
+        else secilenModel = acikModeller[0];
       }
 
-      console.log(`3. Hedef Kilitlendi! Kullanılacak Model: ${secilenModel}`);
-
+      // MADDE 4: Prompt içindeki JSON formatı "kategori" olarak düzeltildi
       const prompt = `
         Sen uzman bir fiş ve fatura okuma yapay zekasısın.
-        Gönderilen fiş/fatura görselini analiz et ve BANA SADECE AŞAĞIDAKİ JSON FORMATINDA CEVAP VER.
-        Başka hiçbir kelime, açıklama veya markdown kullanma. Sadece { ile başlayıp } ile biten JSON objesi ver.
+        DİKKAT: Eğer gönderilen görsel bir fiş, fatura veya adisyon DEĞİLSE (Örn: manzara, insan, boş bir masa resmi vb.), BANA SADECE ŞU JSON'U DÖNDÜR:
+        {"hata": "Bu bir fiş değil"}
         
+        Eğer görsel bir fiş ise, görseli analiz et ve BANA SADECE AŞAĞIDAKİ JSON FORMATINDA CEVAP VER. Başka hiçbir kelime kullanma.
+        
+        KURALLAR:
+        1. "magazaAdi" ve ürün isimlerini "Title Case" formatında düzelt. (Örn: "MİGROS T.A.Ş" yerine "Migros", "BRAVO ASLAN" yerine "Bravo Aslan" yaz).
+        2. Fişin genel içeriğine bakarak en uygun ana kategoriyi belirle. (Sadece şunlardan biri olabilir: Market, Restoran/Kafe, Giyim, Teknoloji, Sağlık, Akaryakıt, Eğlence, Diğer). Bunu doğrudan "kategori" alanına yaz.
+
         Format:
         {
           "magazaAdi": "Mağaza Adı",
           "tarih": "DD.MM.YYYY",
           "toplamTutar": 150.50,
+          "kategori": "Market",
           "urunler": [
             {
               "ad": "Ürün 1",
@@ -106,13 +118,10 @@ export default function KameraScreen() {
             }
           ]
         }
-
-        Kategori sadece şunlardan biri olabilir: Gıda, Temizlik, Kafe, Eğlence, Giyim, Diğer. Eğer tarihi bulamazsan bugünün tarihini at.
       `;
 
       const cleanBase64 = base64Image.replace(/^data:image\/\w+;base64,/, "");
 
-      // ADIM 2: Seçilen modele fotoğrafı fırlatıyoruz
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${secilenModel}:generateContent?key=${GEMINI_API_KEY}`,
         {
@@ -133,47 +142,71 @@ export default function KameraScreen() {
 
       const result = await response.json();
 
-      if (!response.ok) {
+      if (!response.ok)
         throw new Error(
-          result.error?.message || "Google API sunucusu bağlantıyı reddetti.",
+          result.error?.message || "Google API bağlantıyı reddetti.",
         );
-      }
-
-      if (!result.candidates || result.candidates.length === 0) {
-        throw new Error("Yapay zeka fişi okuyamadı, metin bulunamadı.");
-      }
+      if (!result.candidates || result.candidates.length === 0)
+        throw new Error("Metin bulunamadı.");
 
       let aiText = result.candidates[0].content.parts[0].text;
 
       const jsonMatch = aiText.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error("Yapay zeka geçerli bir JSON formatı döndürmedi.");
-      }
+      if (!jsonMatch) throw new Error("Geçerli bir JSON formatı dönmedi.");
 
       const parsedData = JSON.parse(jsonMatch[0]);
 
+      // M15: Eğer yapay zeka bunun fiş olmadığını anlarsa hata fırlat
+      if (parsedData.hata) {
+        throw new Error("Görselde geçerli bir fiş veya fatura bulunamadı.");
+      }
+
+      // M16: JS FONKSİYONU İLE GARANTİLİ DÜZELTME
+      const duzenlenmisUrunler = (parsedData.urunler || []).map(
+        (urun: any) => ({
+          ...urun,
+          ad: metniDuzenle(urun.ad || "Bilinmeyen Ürün"),
+        }),
+      );
+
+      // M4 ve M16: Veri atamaları
       setTempFis({
-        magazaAdi: parsedData.magazaAdi || "Bilinmiyor",
+        magazaAdi: metniDuzenle(parsedData.magazaAdi || "Bilinmiyor"),
         tarih: parsedData.tarih || "",
         toplamTutar: parsedData.toplamTutar || 0,
-        urunler: parsedData.urunler || [],
+        kategori: parsedData.kategori || parsedData.fisKategorisi || "Diğer", // MADDE 4: "kategori" olarak atandı
+        urunler: duzenlenmisUrunler,
       });
 
-      console.log("4. YAPAY ZEKA BAŞARIYLA OKUDU!");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
       router.push({ pathname: "/fisdogrulama", params: { imageUri } });
     } catch (error: any) {
       console.error("Yapay Zeka Hatası:", error.message);
-      setHataMesaji(`Okuma başarısız: ${error.message.substring(0, 80)}...`);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+
+      setHataMesaji(
+        error.message.includes("fiş veya fatura")
+          ? "Bu görsel bir fişe benzemiyor. Lütfen geçerli bir fiş okutun."
+          : `Okuma başarısız: İnternet bağlantınızı kontrol edin.`,
+      );
       setHataModalAcik(true);
-      setTempFis({ magazaAdi: "", tarih: "", toplamTutar: 0, urunler: [] });
+      setTempFis({
+        magazaAdi: "",
+        tarih: "",
+        toplamTutar: 0,
+        kategori: "",
+        urunler: [],
+      });
     } finally {
       setIsProcessing(false);
     }
   };
 
   const galeriyeGit = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ["images"],
       allowsEditing: true,
       quality: 0.7,
       base64: true,
@@ -186,6 +219,7 @@ export default function KameraScreen() {
 
   const fotografCek = async () => {
     if (cameraRef.current && !isProcessing) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       try {
         setIsProcessing(true);
         const photo = await cameraRef.current.takePictureAsync({
@@ -236,7 +270,10 @@ export default function KameraScreen() {
       <View style={styles.ustBar}>
         <TouchableOpacity
           style={styles.ikonButon}
-          onPress={() => router.back()}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.back();
+          }}
         >
           <Ionicons name="close" size={24} color="white" />
         </TouchableOpacity>
@@ -247,7 +284,10 @@ export default function KameraScreen() {
 
         <TouchableOpacity
           style={styles.ikonButon}
-          onPress={() => setFlash((f) => (f === "off" ? "on" : "off"))}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setFlash((f) => (f === "off" ? "on" : "off"));
+          }}
         >
           <Ionicons
             name={flash === "on" ? "flash" : "flash-off-outline"}
@@ -266,11 +306,9 @@ export default function KameraScreen() {
         <View style={[styles.kose, styles.koseSagUst]} />
         <View style={[styles.kose, styles.koseSolAlt]} />
         <View style={[styles.kose, styles.koseSagAlt]} />
-
         <Animated.View
           style={[styles.lazerCizgi, { transform: [{ translateY: scanAnim }] }]}
         />
-
         <View style={styles.rozetKapsayici}>
           <Text style={styles.rozetMetin}>
             {isProcessing
@@ -315,7 +353,10 @@ export default function KameraScreen() {
 
         <TouchableOpacity
           style={styles.manuelButon}
-          onPress={() => router.push("/manuelfis")}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            router.push("/manuelfis");
+          }}
           disabled={isProcessing}
         >
           <Ionicons name="create-outline" size={22} color="#1DB954" />
@@ -335,13 +376,17 @@ export default function KameraScreen() {
             <View style={styles.hataButonlarKapsayici}>
               <TouchableOpacity
                 style={styles.hataKapatButon}
-                onPress={() => setHataModalAcik(false)}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setHataModalAcik(false);
+                }}
               >
                 <Text style={styles.hataKapatButonMetin}>Tekrar Dene</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.hataManuelButon}
                 onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                   setHataModalAcik(false);
                   router.push("/manuelfis");
                 }}
@@ -525,7 +570,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(29, 185, 84, 0.4)",
   },
-
   hataModalArkaPlan: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.8)",

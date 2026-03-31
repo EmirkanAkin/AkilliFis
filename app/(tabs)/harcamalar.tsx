@@ -229,7 +229,10 @@ export default function HarcamalarScreen() {
               <Text style={styles.harcamaAd}>{item.magaza_adi}</Text>
               <View style={styles.kategoriVeTarihKutusu}>
                 <View style={styles.kategoriKutucuk}>
-                  <Text style={styles.kategoriKutucukMetin}>Fiş</Text>
+                  {/* FİŞ YERİNE KATEGORİ YAZAN KISIM */}
+                  <Text style={styles.kategoriKutucukMetin}>
+                    {item.kategori || "Diğer"}
+                  </Text>
                 </View>
                 <Text style={styles.harcamaTarihMetni}>{item.tarih}</Text>
               </View>
