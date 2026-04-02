@@ -1,8 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
+import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { collection, getDocs, query, where } from "firebase/firestore";
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -20,13 +21,25 @@ import { useStore } from "../../store/useStore";
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
-// Kategori Renkleri
-const KATEGORI_RENKLERI: any = {
-  Gıda: "#4CAF50",
-  Temizlik: "#2196F3",
-  Giyim: "#E91E63",
-  Eğlence: "#FF9800",
-  Diğer: "#9C27B0",
+// FİGMA TASARIMINDAKİ RENK PALETİ
+const RENK_PALETI = [
+  "#1DB954", // Yeşil (Sebze/Meyve)
+  "#3B82F6", // Mavi (Temizlik)
+  "#F59E0B", // Turuncu (Meyve/İçecek)
+  "#EF4444", // Kırmızı (Kafe)
+  "#8B5CF6", // Mor (Diğer)
+  "#EC4899", // Pembe
+  "#14B8A6", // Turkuaz
+];
+
+// TARİH FORMATLAMA ("DD.MM.YYYY" -> Date)
+const parseTarih = (tarihStr: string) => {
+  if (!tarihStr) return new Date();
+  const parts = tarihStr.split(".");
+  if (parts.length === 3) {
+    return new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
+  }
+  return new Date();
 };
 
 export default function AnalizScreen() {
@@ -37,64 +50,50 @@ export default function AnalizScreen() {
   const { isim, uid } = useStore();
 
   const [yukleniyor, setYukleniyor] = useState(true);
-  const [harcamalar, setHarcamalar] = useState<any[]>([]);
+  const [hamFisler, setHamFisler] = useState<any[]>([]);
+  const [hamUrunler, setHamUrunler] = useState<any[]>([]);
+
+  // DİNAMİK STATELER
+  const [aktifSekme, setAktifSekme] = useState<"BU HAFTA" | "BU AY" | "BU YIL">(
+    "BU AY",
+  );
   const [toplamHarcama, setToplamHarcama] = useState(0);
   const [seciliBar, setSeciliBar] = useState<number | null>(null);
   const [segments, setSegments] = useState<any[]>([]);
+  const [kupaData, setKupaData] = useState({ durum: "yok", yuzde: 0, fark: 0 });
+  const [barGrafik, setBarGrafik] = useState<
+    { gun: string; h: string; tutar: string }[]
+  >([]);
 
+  // 1. ADIM: FİREBASE'DEN HEM FİŞLERİ HEM ÜRÜNLERİ (DETAYLI ANALİZ İÇİN) ÇEK
   const veriGetir = async () => {
     const aktifUid = uid || auth.currentUser?.uid;
-    if (!aktifUid) {
-      setYukleniyor(false);
-      return;
-    }
+    if (!aktifUid) return setYukleniyor(false);
 
     try {
-      const fislerRef = collection(db, "Fisler");
-      const qFis = query(fislerRef, where("kullanici_id", "==", aktifUid));
+      // Fişleri Çek
+      const qFis = query(
+        collection(db, "Fisler"),
+        where("kullanici_id", "==", aktifUid),
+      );
       const fislerSnap = await getDocs(qFis);
-      setHarcamalar(fislerSnap.docs);
+      const fisVerileri = fislerSnap.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setHamFisler(fisVerileri);
 
-      if (fislerSnap.empty) {
-        setYukleniyor(false);
-        return;
-      }
-
-      const urunlerRef = collection(db, "Urunler");
-      const qUrun = query(urunlerRef, where("kullanici_id", "==", aktifUid));
+      // Ürünleri Çek (Kategori Kırılımı İçin)
+      const qUrun = query(
+        collection(db, "Urunler"),
+        where("kullanici_id", "==", aktifUid),
+      );
       const urunlerSnap = await getDocs(qUrun);
-
-      let genelToplam = 0;
-      const kategoriToplami: any = {};
-
-      urunlerSnap.forEach((doc) => {
-        const data = doc.data();
-        const fiyat = Number(data.fiyat) || 0;
-        const kategori = data.kategori || "Diğer";
-
-        genelToplam += fiyat;
-
-        if (!kategoriToplami[kategori]) {
-          kategoriToplami[kategori] = 0;
-        }
-        kategoriToplami[kategori] += fiyat;
-      });
-
-      setToplamHarcama(genelToplam);
-
-      const dinamikSegments = Object.keys(kategoriToplami).map((katAd) => {
-        const tutar = kategoriToplami[katAd];
-        const percent = genelToplam > 0 ? tutar / genelToplam : 0;
-        return {
-          ad: katAd,
-          tutar: tutar.toFixed(2),
-          percent: percent,
-          color: KATEGORI_RENKLERI[katAd] || "#9C27B0",
-        };
-      });
-
-      dinamikSegments.sort((a, b) => b.percent - a.percent);
-      setSegments(dinamikSegments);
+      const urunVerileri = urunlerSnap.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setHamUrunler(urunVerileri);
     } catch (error) {
       console.error("Analiz verisi çekilemedi:", error);
     } finally {
@@ -102,31 +101,158 @@ export default function AnalizScreen() {
     }
   };
 
+  // 2. ADIM: ZAMAN FİLTRESİNE GÖRE HESAPLAMALAR
+  useEffect(() => {
+    if (hamFisler.length === 0) return;
+
+    const bugun = new Date();
+    const buAy = bugun.getMonth();
+    const buYil = bugun.getFullYear();
+
+    // Haftanın başlangıcını bul (Pazartesi)
+    const haftaninBasi = new Date(bugun);
+    const gunOffset = haftaninBasi.getDay() || 7;
+    haftaninBasi.setDate(haftaninBasi.getDate() - gunOffset + 1);
+    haftaninBasi.setHours(0, 0, 0, 0);
+
+    // --- KUPA KARTI HESABI ---
+    const buAyToplami = hamFisler
+      .filter((f) => {
+        const d = parseTarih(f.tarih);
+        return d.getMonth() === buAy && d.getFullYear() === buYil;
+      })
+      .reduce((acc, f) => acc + (Number(f.toplam_tutar) || 0), 0);
+
+    const gecenAyToplami = hamFisler
+      .filter((f) => {
+        const d = parseTarih(f.tarih);
+        const targetAy = buAy === 0 ? 11 : buAy - 1;
+        const targetYil = buAy === 0 ? buYil - 1 : buYil;
+        return d.getMonth() === targetAy && d.getFullYear() === targetYil;
+      })
+      .reduce((acc, f) => acc + (Number(f.toplam_tutar) || 0), 0);
+
+    if (gecenAyToplami === 0) {
+      setKupaData({ durum: "yok", yuzde: 0, fark: 0 });
+    } else {
+      const farkTutar = buAyToplami - gecenAyToplami;
+      const yuzde = Math.abs((farkTutar / gecenAyToplami) * 100);
+      if (farkTutar > 0)
+        setKupaData({
+          durum: "fazla",
+          yuzde: Math.round(yuzde),
+          fark: Math.abs(farkTutar),
+        });
+      else if (farkTutar < 0)
+        setKupaData({
+          durum: "az",
+          yuzde: Math.round(yuzde),
+          fark: Math.abs(farkTutar),
+        });
+      else setKupaData({ durum: "esit", yuzde: 0, fark: 0 });
+    }
+
+    // --- GÜNLÜK ÇUBUK GRAFİĞİ (SABİT: HER ZAMAN İÇİNDE BULUNULAN HAFTA PZT-PAZ) ---
+    const buHaftaFisleri = hamFisler.filter(
+      (f) => parseTarih(f.tarih) >= haftaninBasi,
+    );
+    const gunler = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"];
+    const gunlukToplamlar = [0, 0, 0, 0, 0, 0, 0];
+
+    buHaftaFisleri.forEach((f) => {
+      let g = parseTarih(f.tarih).getDay(); // 0: Paz, 1: Pzt...
+      g = g === 0 ? 6 : g - 1; // Pzt:0, Paz:6
+      gunlukToplamlar[g] += Number(f.toplam_tutar) || 0;
+    });
+
+    const maxValBar = Math.max(...gunlukToplamlar, 1);
+    const barVerileri = gunler.map((g, i) => ({
+      gun: g,
+      tutar: gunlukToplamlar[i].toLocaleString("tr-TR", {
+        minimumFractionDigits: 2,
+      }),
+      h: `${Math.max((gunlukToplamlar[i] / maxValBar) * 100, 10)}%`, // En az %10
+    }));
+    setBarGrafik(barVerileri);
+
+    // --- ZAMAN FİLTRESİ (SEKMELERE GÖRE SADECE ÇARK VE LİSTE DEĞİŞECEK) ---
+    let seciliFisler: any[] = [];
+    if (aktifSekme === "BU HAFTA") {
+      seciliFisler = buHaftaFisleri; // Yukarda hesapladığımız bu hafta fişleri
+    } else if (aktifSekme === "BU AY") {
+      seciliFisler = hamFisler.filter((f) => {
+        const d = parseTarih(f.tarih);
+        return d.getMonth() === buAy && d.getFullYear() === buYil;
+      });
+    } else if (aktifSekme === "BU YIL") {
+      seciliFisler = hamFisler.filter(
+        (f) => parseTarih(f.tarih).getFullYear() === buYil,
+      );
+    }
+
+    // --- DETAYLI KATEGORİ ÇARKI HESAPLAMA (Ürünler üzerinden) ---
+    const gecerliFisIdler = seciliFisler.map((f) => f.id);
+    const seciliUrunler = hamUrunler.filter((u) =>
+      gecerliFisIdler.includes(u.fis_id),
+    );
+
+    let genelToplam = 0;
+    const kategoriToplami: any = {};
+
+    // Toplam Harcama yine fişlerden alınsın ki küsurat hatası olmasın
+    const anaToplamHarcama = seciliFisler.reduce(
+      (acc, f) => acc + (Number(f.toplam_tutar) || 0),
+      0,
+    );
+    setToplamHarcama(anaToplamHarcama);
+
+    seciliUrunler.forEach((u) => {
+      const tutar = Number(u.fiyat) || 0;
+      const kategori = u.kategori || "Diğer";
+      genelToplam += tutar;
+      kategoriToplami[kategori] = (kategoriToplami[kategori] || 0) + tutar;
+    });
+
+    const dinamikSegments = Object.keys(kategoriToplami).map((katAd, index) => {
+      const tutar = kategoriToplami[katAd];
+      const percent = genelToplam > 0 ? tutar / genelToplam : 0;
+      return {
+        ad: katAd,
+        tutar: tutar.toLocaleString("tr-TR", {
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 2,
+        }),
+        percent: percent,
+        color: RENK_PALETI[index % RENK_PALETI.length], // Sırayla renk ata
+      };
+    });
+
+    dinamikSegments.sort((a, b) => b.percent - a.percent);
+    setSegments(dinamikSegments);
+
+    // ÇARK ANİMASYONU TETİKLE
+    animValue.setValue(0);
+    Animated.timing(animValue, {
+      toValue: -circumference,
+      duration: 1200,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [hamFisler, hamUrunler, aktifSekme]);
+
   useFocusEffect(
     useCallback(() => {
       scrollRef.current?.scrollTo({ y: 0, animated: false });
       setYukleniyor(true);
-      veriGetir().then(() => {
-        animValue.setValue(0);
-        Animated.timing(animValue, {
-          toValue: -circumference,
-          duration: 1500,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: false,
-        }).start();
-      });
-    }, [circumference]),
+      veriGetir();
+    }, []),
   );
 
-  const haftalikVeriler = [
-    { gun: "Pzt", h: "45%", tutar: "210" },
-    { gun: "Sal", h: "60%", tutar: "340" },
-    { gun: "Çar", h: "35%", tutar: "290" },
-    { gun: "Per", h: "80%", tutar: "480" },
-    { gun: "Cum", h: "55%", tutar: "310" },
-    { gun: "Cmt", h: "90%", tutar: "520" },
-    { gun: "Paz", h: "50%", tutar: "280" },
-  ];
+  const sekmeDegistir = (sekme: "BU HAFTA" | "BU AY" | "BU YIL") => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setAktifSekme(sekme);
+    setSeciliBar(null);
+  };
 
   if (yukleniyor) {
     return (
@@ -142,7 +268,7 @@ export default function AnalizScreen() {
   }
 
   // 1. BOŞ EKRAN
-  if (harcamalar.length === 0) {
+  if (hamFisler.length === 0) {
     return (
       <ScrollView
         ref={scrollRef}
@@ -192,50 +318,7 @@ export default function AnalizScreen() {
               En az bir fiş taradıktan sonra grafikler burada görünecek
             </Text>
           </View>
-
-          <View style={styles.kartlarKapsayiciBos}>
-            <View style={styles.bilgiKartiBos}>
-              <View style={styles.ikonZeminBos}>
-                <Ionicons name="pie-chart" size={20} color="#1DB954" />
-              </View>
-              <View>
-                <Text style={styles.kartBaslikBos}>Kategori Dağılımı</Text>
-                <Text style={styles.kartAltBos}>
-                  Harcamalarını kategorilere göre gör
-                </Text>
-              </View>
-            </View>
-            <View style={styles.bilgiKartiBos}>
-              <View style={styles.ikonZeminBos}>
-                <Ionicons name="stats-chart" size={20} color="#1DB954" />
-              </View>
-              <View>
-                <Text style={styles.kartBaslikBos}>Harcama Trendleri</Text>
-                <Text style={styles.kartAltBos}>
-                  Günlük, aylık ve yıllık analiz
-                </Text>
-              </View>
-            </View>
-            <View style={styles.bilgiKartiBos}>
-              <View style={styles.ikonZeminBos}>
-                <Ionicons name="document-text" size={20} color="#1DB954" />
-              </View>
-              <View>
-                <Text style={styles.kartBaslikBos}>Detaylı Raporlar</Text>
-                <Text style={styles.kartAltBos}>
-                  Tasarruf önerileri ve içgörüler
-                </Text>
-              </View>
-            </View>
-          </View>
-
-          <View style={styles.ipucuKutusuBos}>
-            <Text style={styles.ipucuMetniBos}>
-              💡 İlk fişini tarayarak analizleri aktifleştir
-            </Text>
-          </View>
         </View>
-        <View style={{ height: 100 }} />
       </ScrollView>
     );
   }
@@ -263,9 +346,7 @@ export default function AnalizScreen() {
           />
           <Text style={styles.kategoriBarIsim}>{title}</Text>
         </View>
-        <Text style={styles.kategoriBarTutar}>
-          {amount.replace(".", ",")} TL
-        </Text>
+        <Text style={styles.kategoriBarTutar}>{amount} TL</Text>
       </View>
       <View style={styles.kategoriBarZemin}>
         <View
@@ -293,34 +374,72 @@ export default function AnalizScreen() {
         </Text>
       </View>
 
-      {/* DÜZELTİLDİ: ORİJİNAL KUPA KARTIN GERİ GELDİ */}
-      <LinearGradient
-        colors={["rgba(29, 185, 84, 0.12)", "rgba(29, 185, 84, 0.06)"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.kupaKarti}
-      >
-        <Text style={styles.kupaIkon}>🏆</Text>
-        <View style={styles.kupaMetinAlani}>
-          <Text style={styles.kupaBaslik}>Bu ay %23 daha az harcadın!</Text>
-          <Text style={styles.kupaAltMetin}>
-            Geçen aya kıyasla 1.040 TL tasarruf
+      {/* DİNAMİK KUPA KARTI */}
+      {kupaData.durum !== "yok" && (
+        <LinearGradient
+          colors={
+            kupaData.durum === "az"
+              ? ["rgba(29, 185, 84, 0.12)", "rgba(29, 185, 84, 0.06)"]
+              : ["rgba(255, 107, 107, 0.12)", "rgba(255, 107, 107, 0.06)"]
+          }
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[
+            styles.kupaKarti,
+            {
+              borderColor:
+                kupaData.durum === "az"
+                  ? "rgba(29, 185, 84, 0.20)"
+                  : "rgba(255, 107, 107, 0.20)",
+            },
+          ]}
+        >
+          <Text style={styles.kupaIkon}>
+            {kupaData.durum === "az" ? "🏆" : "⚠️"}
           </Text>
-        </View>
-        <Ionicons name="trending-up" size={18} color="#1DB954" />
-      </LinearGradient>
+          <View style={styles.kupaMetinAlani}>
+            <Text style={styles.kupaBaslik}>
+              Geçen aya göre %{kupaData.yuzde} daha{" "}
+              {kupaData.durum === "az" ? "az" : "fazla"} harcadın!
+            </Text>
+            <Text style={styles.kupaAltMetin}>
+              {kupaData.fark.toLocaleString("tr-TR", {
+                minimumFractionDigits: 2,
+              })}{" "}
+              TL{" "}
+              {kupaData.durum === "az" ? "tasarruf ettin" : "fazladan harcadın"}
+            </Text>
+          </View>
+          <Ionicons
+            name={kupaData.durum === "az" ? "trending-down" : "trending-up"}
+            size={18}
+            color={kupaData.durum === "az" ? "#1DB954" : "#FF6B6B"}
+          />
+        </LinearGradient>
+      )}
 
+      {/* DİNAMİK ZAMAN SEKMELERİ */}
       <View style={styles.zamanSekmeleri}>
-        <TouchableOpacity style={styles.sekmeInaktif}>
-          <Text style={styles.sekmeMetinInaktif}>BU HAFTA</Text>
-        </TouchableOpacity>
-        {/* DÜZELTİLDİ: "TÜMÜ" YAZISI "BU AY" OLARAK DEĞİŞTİ */}
-        <View style={styles.sekmeAktif}>
-          <Text style={styles.sekmeMetinAktif}>BU AY</Text>
-        </View>
-        <TouchableOpacity style={styles.sekmeInaktif}>
-          <Text style={styles.sekmeMetinInaktif}>BU YIL</Text>
-        </TouchableOpacity>
+        {(["BU HAFTA", "BU AY", "BU YIL"] as const).map((sekme) => (
+          <TouchableOpacity
+            key={sekme}
+            style={
+              aktifSekme === sekme ? styles.sekmeAktif : styles.sekmeInaktif
+            }
+            onPress={() => sekmeDegistir(sekme)}
+            activeOpacity={0.7}
+          >
+            <Text
+              style={
+                aktifSekme === sekme
+                  ? styles.sekmeMetinAktif
+                  : styles.sekmeMetinInaktif
+              }
+            >
+              {sekme}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
       <View style={styles.kartKapsayici}>
@@ -329,19 +448,15 @@ export default function AnalizScreen() {
             <Text style={styles.kartUstBaslik}>TOPLAM HARCAMA</Text>
             <Text style={styles.kartBuyukTutar}>
               {toplamHarcama.toLocaleString("tr-TR", {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0,
               })}{" "}
               TL
             </Text>
           </View>
-          <View style={styles.yuzdeRozeti}>
-            <Ionicons name="trending-down" size={12} color="#1DB954" />
-            <Text style={styles.yuzdeRozetMetni}>-23%</Text>
-          </View>
+          {/* SAĞ ÜSTTEKİ ROZET KALDIRILDI */}
         </View>
 
-        {/* DÜZELTİLDİ: ÇARK GERİ GELDİ VE HATASIZ ÇALIŞIYOR */}
         <View style={styles.grafikAlani}>
           <Svg width="200" height="200" viewBox="0 0 200 200">
             <G rotation="-90" origin="100, 100">
@@ -372,73 +487,81 @@ export default function AnalizScreen() {
           </Svg>
           <View style={styles.pieMerkez}>
             <Text style={styles.pieMerkezUst}>TOPLAM</Text>
-            <Text style={[styles.pieMerkezMiktar, { fontSize: 16 }]}>
-              {Math.floor(toplamHarcama)}
+            <Text style={styles.pieMerkezMiktar}>
+              {Math.floor(toplamHarcama).toLocaleString("tr-TR")}
             </Text>
             <Text style={styles.pieMerkezTL}>TL</Text>
           </View>
         </View>
 
         <View style={styles.legendKapsayici}>
-          <View
-            style={{
-              flexDirection: "row",
-              flexWrap: "wrap",
-              gap: 16,
-              justifyContent: "center",
-            }}
-          >
-            {segments.map((seg, i) => (
-              <View key={i} style={styles.legendOge}>
-                <View style={[styles.nokta, { backgroundColor: seg.color }]} />
-                <Text style={styles.legendMetin}>
-                  {seg.ad} ({Math.round(seg.percent * 100)}%)
-                </Text>
-              </View>
-            ))}
-          </View>
+          {segments.map((seg, i) => (
+            <View key={i} style={styles.legendOge}>
+              <View style={[styles.nokta, { backgroundColor: seg.color }]} />
+              <Text style={styles.legendMetin}>
+                {seg.ad} ({Math.round(seg.percent * 100)}%)
+              </Text>
+            </View>
+          ))}
         </View>
       </View>
 
       <View style={styles.kartKapsayici}>
         <Text style={styles.kartBaslikKucuk}>KATEGORİ DAĞILIMI</Text>
         <View style={{ marginTop: 12, gap: 12 }}>
-          {segments.map((s, i) => (
-            <KategoriBar
-              key={i}
-              color={s.color}
-              title={s.ad}
-              amount={s.tutar}
-              percent={`${s.percent * 100 || 0}%`}
-            />
-          ))}
+          {segments.length > 0 ? (
+            segments.map((s, i) => (
+              <KategoriBar
+                key={i}
+                color={s.color}
+                title={s.ad}
+                amount={s.tutar}
+                percent={`${s.percent * 100 || 0}%`}
+              />
+            ))
+          ) : (
+            <Text
+              style={{
+                color: "rgba(255,255,255,0.4)",
+                textAlign: "center",
+                marginVertical: 10,
+              }}
+            >
+              Bu dönemde harcama yok.
+            </Text>
+          )}
         </View>
       </View>
 
       <View style={[styles.kartKapsayici, { marginBottom: 40 }]}>
         <Text style={styles.kartBaslikKucuk}>GÜNLÜK HARCAMALAR</Text>
         <View style={styles.barChartKapsayici}>
-          {haftalikVeriler.map((item, index) => {
+          {barGrafik.map((item, index) => {
             const isSelected = seciliBar === index;
             return (
               <Pressable
                 key={index}
-                onPress={() => setSeciliBar(isSelected ? null : index)}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setSeciliBar(isSelected ? null : index);
+                }}
                 style={[
                   styles.barSutun,
                   isSelected && styles.barSutunSecili,
-                  { zIndex: isSelected ? 10 : 1 },
+                  { zIndex: isSelected ? 10 : 1, flex: 1 },
                 ]}
               >
                 {isSelected && (
                   <View style={styles.tooltipKutu}>
-                    <Text style={styles.tooltipMetin}>{item.tutar} TL</Text>
+                    <Text style={styles.tooltipMetin}>{item.tutar} ₺</Text>
                   </View>
                 )}
                 <View style={styles.barAlan}>
                   <View style={[styles.barDolgu, { height: item.h as any }]} />
                 </View>
-                <Text style={styles.barGun}>{item.gun}</Text>
+                <Text style={styles.barGun} numberOfLines={1}>
+                  {item.gun}
+                </Text>
               </Pressable>
             );
           })}
@@ -450,7 +573,7 @@ export default function AnalizScreen() {
 }
 
 const styles = StyleSheet.create({
-  anaEkran: { flex: 1, backgroundColor: "#0A0A0A", paddingHorizontal: 20 },
+  anaEkran: { flex: 1, backgroundColor: "#121212", paddingHorizontal: 20 },
   headerKapsayici: { marginBottom: 24 },
   ustBaslik: {
     color: "rgba(255, 255, 255, 0.40)",
@@ -463,7 +586,7 @@ const styles = StyleSheet.create({
     color: "white",
     fontSize: 22,
     fontWeight: "800",
-    lineHeight: 28,
+    lineHeight: 26.4,
   },
   isimVurgu: { color: "#1DB954" },
   scrollIcerikBos: { paddingHorizontal: 20, paddingTop: 60 },
@@ -525,48 +648,12 @@ const styles = StyleSheet.create({
     maxWidth: 280,
     lineHeight: 22,
   },
-  kartlarKapsayiciBos: { width: "100%", gap: 12, marginBottom: 32 },
-  bilgiKartiBos: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 16,
-    backgroundColor: "rgba(255, 255, 255, 0.03)",
-    padding: 16,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.06)",
-  },
-  ikonZeminBos: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: "rgba(29, 185, 84, 0.1)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  kartBaslikBos: { color: "white", fontSize: 14, fontWeight: "600" },
-  kartAltBos: {
-    color: "rgba(255, 255, 255, 0.35)",
-    fontSize: 11,
-    marginTop: 2,
-  },
-  ipucuKutusuBos: {
-    width: "100%",
-    padding: 16,
-    borderRadius: 16,
-    backgroundColor: "rgba(29, 185, 84, 0.05)",
-    borderWidth: 1,
-    borderColor: "rgba(29, 185, 84, 0.15)",
-    alignItems: "center",
-  },
-  ipucuMetniBos: { color: "rgba(255, 255, 255, 0.5)", fontSize: 12 },
   kupaKarti: {
     flexDirection: "row",
     alignItems: "center",
     padding: 12,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "rgba(29, 185, 84, 0.20)",
     marginBottom: 20,
   },
   kupaIkon: { fontSize: 24, marginRight: 12 },
@@ -611,12 +698,12 @@ const styles = StyleSheet.create({
   },
   sekmeMetinAktif: { color: "white", fontSize: 10, fontWeight: "700" },
   kartKapsayici: {
-    backgroundColor: "#18181B",
+    backgroundColor: "rgba(39, 39, 42, 0.70)",
     borderRadius: 24,
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.07)",
-    padding: 20,
-    marginBottom: 20,
+    padding: 21,
+    marginBottom: 12,
   },
   kartHeader: {
     flexDirection: "row",
@@ -628,29 +715,40 @@ const styles = StyleSheet.create({
     fontSize: 10,
     letterSpacing: 1,
   },
-  kartBuyukTutar: { color: "white", fontSize: 22, fontWeight: "800" },
+  kartBuyukTutar: {
+    color: "white",
+    fontSize: 22,
+    fontWeight: "800",
+    marginTop: 4,
+  },
   yuzdeRozeti: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(29, 185, 84, 0.10)",
-    paddingHorizontal: 8,
+    paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 10,
     gap: 4,
+    borderWidth: 1,
+    borderColor: "rgba(29, 185, 84, 0.20)",
   },
-  yuzdeRozetMetni: { color: "#1DB954", fontSize: 12, fontWeight: "600" },
+  yuzdeRozetMetni: { fontSize: 12, fontWeight: "600" },
   grafikAlani: {
     alignItems: "center",
     justifyContent: "center",
     marginVertical: 20,
-    height: 200,
+    height: 180,
   },
   pieMerkez: { position: "absolute", alignItems: "center" },
   pieMerkezUst: { color: "rgba(255, 255, 255, 0.40)", fontSize: 11 },
   pieMerkezMiktar: { color: "white", fontSize: 17, fontWeight: "800" },
   pieMerkezTL: { color: "#1DB954", fontSize: 11, fontWeight: "600" },
-  legendKapsayici: { gap: 10, marginTop: 10 },
-  legendSatir: { flexDirection: "row", gap: 16 },
+  legendKapsayici: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: 16,
+    marginTop: 10,
+  },
   legendOge: { flexDirection: "row", alignItems: "center", gap: 6 },
   nokta: { width: 8, height: 8, borderRadius: 2 },
   legendMetin: { color: "rgba(255, 255, 255, 0.55)", fontSize: 11 },
@@ -659,8 +757,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     letterSpacing: 1,
   },
-  kategoriBarKapsayici: { gap: 6 },
-  kategoriBarUst: { flexDirection: "row", justifyContent: "space-between" },
+  kategoriBarKapsayici: { gap: 4 },
+  kategoriBarUst: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    height: 18,
+  },
   kategoriBarIsim: { color: "rgba(255, 255, 255, 0.70)", fontSize: 12 },
   kategoriBarTutar: { color: "white", fontSize: 12, fontWeight: "600" },
   kategoriBarZemin: {
@@ -673,13 +775,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-end",
-    height: 120,
-    marginTop: 20,
+    height: 110,
+    marginTop: 16,
   },
   barSutun: {
     alignItems: "center",
-    width: 40,
-    height: 120,
+    height: 110,
     justifyContent: "flex-end",
     paddingBottom: 6,
     borderRadius: 8,
@@ -700,16 +801,17 @@ const styles = StyleSheet.create({
   barGun: { color: "rgba(255, 255, 255, 0.40)", fontSize: 11 },
   tooltipKutu: {
     position: "absolute",
-    top: -15,
-    left: 15,
+    top: -20,
     backgroundColor: "rgba(39, 39, 42, 0.95)",
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
     paddingVertical: 6,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.15)",
-    width: 65,
     elevation: 6,
+    alignSelf: "center",
+    minWidth: 50,
+    alignItems: "center",
   },
-  tooltipMetin: { color: "white", fontSize: 11, fontWeight: "700" },
+  tooltipMetin: { color: "white", fontSize: 10, fontWeight: "700" },
 });
