@@ -92,7 +92,7 @@ export default function KameraScreen() {
         else secilenModel = acikModeller[0];
       }
 
-      // MADDE 4: Prompt içindeki JSON formatı "kategori" olarak düzeltildi
+      // 🔴 DÜZELTME BURADA: PROMPT GÜNCELLENDİ (Detaylı Ürün Kategorileri Eklendi)
       const prompt = `
         Sen uzman bir fiş ve fatura okuma yapay zekasısın.
         DİKKAT: Eğer gönderilen görsel bir fiş, fatura veya adisyon DEĞİLSE (Örn: manzara, insan, boş bir masa resmi vb.), BANA SADECE ŞU JSON'U DÖNDÜR:
@@ -102,7 +102,19 @@ export default function KameraScreen() {
         
         KURALLAR:
         1. "magazaAdi" ve ürün isimlerini "Title Case" formatında düzelt. (Örn: "MİGROS T.A.Ş" yerine "Migros", "BRAVO ASLAN" yerine "Bravo Aslan" yaz).
-        2. Fişin genel içeriğine bakarak en uygun ana kategoriyi belirle. (Sadece şunlardan biri olabilir: Market, Restoran/Kafe, Giyim, Teknoloji, Sağlık, Akaryakıt, Eğlence, Diğer). Bunu doğrudan "kategori" alanına yaz.
+        2. FİŞİN GENEL KATEGORİSİ ("kategori" alanı) sadece şunlardan biri olabilir: Market, Kafe, Alışveriş, Teknoloji, Abonelik, Gıda, Temizlik, Giyim, Eğlence, Sağlık, Diğer.
+        3. ÜRÜNLERİN KENDİ KATEGORİSİ (urunler içindeki "kategori" alanı) KESİNLİKLE sadece şu listedekilerden biri olmalıdır, başka kelime uydurma:
+           - "Sebze/Meyve"
+           - "Temizlik"
+           - "Atıştırmalık/İçecek"
+           - "Temel Gıda"
+           - "Kafe/Restoran"
+           - "Kozmetik/Kişisel"
+           - "Teknoloji"
+           - "Giyim"
+           - "Abonelik"
+           - "Diğer"
+           Lütfen her ürünün ne olduğunu anlayarak bu listedeki en uygun kategoriye ata. Bulamazsan "Diğer" yap.
 
         Format:
         {
@@ -114,7 +126,7 @@ export default function KameraScreen() {
             {
               "ad": "Ürün 1",
               "fiyat": 50.25,
-              "kategori": "Gıda"
+              "kategori": "Atıştırmalık/İçecek"
             }
           ]
         }
@@ -174,7 +186,7 @@ export default function KameraScreen() {
         magazaAdi: metniDuzenle(parsedData.magazaAdi || "Bilinmiyor"),
         tarih: parsedData.tarih || "",
         toplamTutar: parsedData.toplamTutar || 0,
-        kategori: parsedData.kategori || parsedData.fisKategorisi || "Diğer", // MADDE 4: "kategori" olarak atandı
+        kategori: parsedData.kategori || parsedData.fisKategorisi || "Diğer",
         urunler: duzenlenmisUrunler,
       });
 

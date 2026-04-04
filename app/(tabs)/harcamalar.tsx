@@ -1,14 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
+import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import {
-  collection,
-  onSnapshot,
-  orderBy,
-  query,
-  where,
-} from "firebase/firestore";
-import React, { useEffect, useState } from "react";
+import { collection, getDocs, query, where } from "firebase/firestore";
+import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -22,9 +18,17 @@ import {
 import { auth, db } from "../../firebaseConfig";
 import { useStore } from "../../store/useStore";
 
-// --- YARDIMCI FONKSİYONLAR ---
+// TARİH FORMATLAMA ("DD.MM.YYYY" -> Date)
+const parseTarih = (tarihStr: string) => {
+  if (!tarihStr) return new Date();
+  const parts = tarihStr.split(".");
+  if (parts.length === 3) {
+    return new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
+  }
+  return new Date();
+};
 
-// 1. Tarih Formatlama (19.10.2023 -> "EKİM 2023" ve "19 Eki 2023")
+// 19.10.2023 -> "EKİM 2023" ve "19 Eki 2023" formatına çevirici
 const formatlaTarih = (tarihStr: string) => {
   if (!tarihStr) return { ayYil: "BİLİNMEYEN TARİH", gunAyYil: "" };
   const parts = tarihStr.split(".");
@@ -69,7 +73,7 @@ const formatlaTarih = (tarihStr: string) => {
   };
 };
 
-// 2. Markaya Göre Renk Atama (MADDE 2 Entegrasyonu)
+// Markaya Göre Renk Atama
 const getMarkaRengi = (markaAd: string) => {
   if (!markaAd) return "#1DB954";
   const m = markaAd.toLowerCase();
@@ -88,7 +92,6 @@ const getMarkaRengi = (markaAd: string) => {
   return "#1DB954"; // Varsayılan renk
 };
 
-// 3. Para Formatı (Örn: 2250.8 -> 2.250,80)
 const formatMoney = (amount: number) => {
   return amount.toLocaleString("tr-TR", {
     minimumFractionDigits: 2,
@@ -104,31 +107,42 @@ export default function HarcamalarScreen() {
   const [yukleniyor, setYukleniyor] = useState(true);
   const [aktifFiltre, setAktifFiltre] = useState("Tümü");
 
-  // FİREBASE BAĞLANTISI
-  useEffect(() => {
+  // FİREBASE BAĞLANTISI (TARİHE GÖRE SIRALAMALI)
+  const veriGetir = async () => {
     const aktifUid = uid || auth.currentUser?.uid;
+    if (!aktifUid) return setYukleniyor(false);
 
-    if (aktifUid) {
+    try {
       const q = query(
         collection(db, "Fisler"),
         where("kullanici_id", "==", aktifUid),
-        orderBy("olusturulma_tarihi", "desc"),
+      );
+      const fislerSnap = await getDocs(q);
+      const veriler = fislerSnap.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+
+      // 🔴 ÇÖZÜM: a ve b'ye "any" dedik, TS hatasını çözdük.
+      const siraliVeriler = veriler.sort(
+        (a: any, b: any) =>
+          parseTarih(b.tarih).getTime() - parseTarih(a.tarih).getTime(),
       );
 
-      const unsub = onSnapshot(q, (snapshot) => {
-        const veriler = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
-        setHarcamalar(veriler);
-        setYukleniyor(false);
-      });
-
-      return () => unsub();
-    } else {
+      setHarcamalar(siraliVeriler);
+    } catch (error) {
+      console.error("Harcamalar çekilemedi:", error);
+    } finally {
       setYukleniyor(false);
     }
-  }, [uid]);
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      setYukleniyor(true);
+      veriGetir();
+    }, []),
+  );
 
   // KATEGORİ SAYILARINI HESAPLA (Dinamik Filtreler)
   const kategoriSayilari = harcamalar.reduce(
@@ -148,6 +162,7 @@ export default function HarcamalarScreen() {
       ? harcamalar
       : harcamalar.filter((h) => (h.kategori || "Diğer") === aktifFiltre);
 
+  // GRUPLAMA MANTIĞI
   const gruplar: { ayYil: string; toplam: number; veriler: any[] }[] = [];
   filtrelenmisHarcamalar.forEach((h) => {
     const { ayYil, gunAyYil } = formatlaTarih(h.tarih);
@@ -295,7 +310,10 @@ export default function HarcamalarScreen() {
                 key={kat}
                 style={[styles.filtreHap, isAktif && styles.filtreHapAktif]}
                 activeOpacity={0.8}
-                onPress={() => setAktifFiltre(kat)}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setAktifFiltre(kat);
+                }}
               >
                 <Text
                   style={[
@@ -422,9 +440,8 @@ export default function HarcamalarScreen() {
   );
 }
 
-// ... STİLLER ...
+// STİLLER
 const styles = StyleSheet.create({
-  // BOŞ EKRAN
   anaEkranBos: {
     flex: 1,
     backgroundColor: "#121212",
@@ -550,7 +567,6 @@ const styles = StyleSheet.create({
     fontWeight: "400",
   },
 
-  // DOLU EKRAN
   anaEkran: { flex: 1, backgroundColor: "#121212", paddingTop: 60 },
   headerKutusu: {
     flexDirection: "row",
@@ -675,11 +691,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginBottom: 4,
   },
-  kategoriVeTarihKutusu: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
+  kategoriVeTarihKutusu: { flexDirection: "row", alignItems: "center", gap: 8 },
   kategoriKutucuk: {
     backgroundColor: "rgba(255, 255, 255, 0.06)",
     paddingHorizontal: 6,
@@ -696,11 +708,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "500",
   },
-  fiyatVeOkKapsayici: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
+  fiyatVeOkKapsayici: { flexDirection: "row", alignItems: "center", gap: 4 },
   harcamaTutar: {
     color: "rgba(255, 107, 107, 0.90)",
     fontSize: 13,

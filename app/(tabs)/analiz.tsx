@@ -21,16 +21,19 @@ import { useStore } from "../../store/useStore";
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
-// FİGMA TASARIMINDAKİ RENK PALETİ
-const RENK_PALETI = [
-  "#1DB954", // Yeşil (Sebze/Meyve)
-  "#3B82F6", // Mavi (Temizlik)
-  "#F59E0B", // Turuncu (Meyve/İçecek)
-  "#EF4444", // Kırmızı (Kafe)
-  "#8B5CF6", // Mor (Diğer)
-  "#EC4899", // Pembe
-  "#14B8A6", // Turkuaz
-];
+// 🔴 ÇÖZÜM: UYGULAMANIN ANA KATEGORİ RENKLERİ BURAYA EKLENDİ
+const KATEGORI_RENGI: any = {
+  "Sebze/Meyve": "#1DB954",
+  Temizlik: "#3B82F6",
+  "Atıştırmalık/İçecek": "#F59E0B",
+  "Temel Gıda": "#4CAF50",
+  "Kafe/Restoran": "#EF4444",
+  "Kozmetik/Kişisel": "#EC4899",
+  Teknoloji: "#D62828",
+  Giyim: "#E91E63",
+  Abonelik: "#5D00D2",
+  Diğer: "#8B5CF6",
+};
 
 // TARİH FORMATLAMA ("DD.MM.YYYY" -> Date)
 const parseTarih = (tarihStr: string) => {
@@ -65,13 +68,11 @@ export default function AnalizScreen() {
     { gun: string; h: string; tutar: string }[]
   >([]);
 
-  // 1. ADIM: FİREBASE'DEN HEM FİŞLERİ HEM ÜRÜNLERİ (DETAYLI ANALİZ İÇİN) ÇEK
   const veriGetir = async () => {
     const aktifUid = uid || auth.currentUser?.uid;
     if (!aktifUid) return setYukleniyor(false);
 
     try {
-      // Fişleri Çek
       const qFis = query(
         collection(db, "Fisler"),
         where("kullanici_id", "==", aktifUid),
@@ -83,7 +84,6 @@ export default function AnalizScreen() {
       }));
       setHamFisler(fisVerileri);
 
-      // Ürünleri Çek (Kategori Kırılımı İçin)
       const qUrun = query(
         collection(db, "Urunler"),
         where("kullanici_id", "==", aktifUid),
@@ -101,7 +101,6 @@ export default function AnalizScreen() {
     }
   };
 
-  // 2. ADIM: ZAMAN FİLTRESİNE GÖRE HESAPLAMALAR
   useEffect(() => {
     if (hamFisler.length === 0) return;
 
@@ -109,13 +108,11 @@ export default function AnalizScreen() {
     const buAy = bugun.getMonth();
     const buYil = bugun.getFullYear();
 
-    // Haftanın başlangıcını bul (Pazartesi)
     const haftaninBasi = new Date(bugun);
     const gunOffset = haftaninBasi.getDay() || 7;
     haftaninBasi.setDate(haftaninBasi.getDate() - gunOffset + 1);
     haftaninBasi.setHours(0, 0, 0, 0);
 
-    // --- KUPA KARTI HESABI ---
     const buAyToplami = hamFisler
       .filter((f) => {
         const d = parseTarih(f.tarih);
@@ -152,7 +149,6 @@ export default function AnalizScreen() {
       else setKupaData({ durum: "esit", yuzde: 0, fark: 0 });
     }
 
-    // --- GÜNLÜK ÇUBUK GRAFİĞİ (SABİT: HER ZAMAN İÇİNDE BULUNULAN HAFTA PZT-PAZ) ---
     const buHaftaFisleri = hamFisler.filter(
       (f) => parseTarih(f.tarih) >= haftaninBasi,
     );
@@ -160,8 +156,8 @@ export default function AnalizScreen() {
     const gunlukToplamlar = [0, 0, 0, 0, 0, 0, 0];
 
     buHaftaFisleri.forEach((f) => {
-      let g = parseTarih(f.tarih).getDay(); // 0: Paz, 1: Pzt...
-      g = g === 0 ? 6 : g - 1; // Pzt:0, Paz:6
+      let g = parseTarih(f.tarih).getDay();
+      g = g === 0 ? 6 : g - 1;
       gunlukToplamlar[g] += Number(f.toplam_tutar) || 0;
     });
 
@@ -171,14 +167,13 @@ export default function AnalizScreen() {
       tutar: gunlukToplamlar[i].toLocaleString("tr-TR", {
         minimumFractionDigits: 2,
       }),
-      h: `${Math.max((gunlukToplamlar[i] / maxValBar) * 100, 10)}%`, // En az %10
+      h: `${Math.max((gunlukToplamlar[i] / maxValBar) * 100, 10)}%`,
     }));
     setBarGrafik(barVerileri);
 
-    // --- ZAMAN FİLTRESİ (SEKMELERE GÖRE SADECE ÇARK VE LİSTE DEĞİŞECEK) ---
     let seciliFisler: any[] = [];
     if (aktifSekme === "BU HAFTA") {
-      seciliFisler = buHaftaFisleri; // Yukarda hesapladığımız bu hafta fişleri
+      seciliFisler = buHaftaFisleri;
     } else if (aktifSekme === "BU AY") {
       seciliFisler = hamFisler.filter((f) => {
         const d = parseTarih(f.tarih);
@@ -190,7 +185,6 @@ export default function AnalizScreen() {
       );
     }
 
-    // --- DETAYLI KATEGORİ ÇARKI HESAPLAMA (Ürünler üzerinden) ---
     const gecerliFisIdler = seciliFisler.map((f) => f.id);
     const seciliUrunler = hamUrunler.filter((u) =>
       gecerliFisIdler.includes(u.fis_id),
@@ -199,7 +193,6 @@ export default function AnalizScreen() {
     let genelToplam = 0;
     const kategoriToplami: any = {};
 
-    // Toplam Harcama yine fişlerden alınsın ki küsurat hatası olmasın
     const anaToplamHarcama = seciliFisler.reduce(
       (acc, f) => acc + (Number(f.toplam_tutar) || 0),
       0,
@@ -213,7 +206,7 @@ export default function AnalizScreen() {
       kategoriToplami[kategori] = (kategoriToplami[kategori] || 0) + tutar;
     });
 
-    const dinamikSegments = Object.keys(kategoriToplami).map((katAd, index) => {
+    const dinamikSegments = Object.keys(kategoriToplami).map((katAd) => {
       const tutar = kategoriToplami[katAd];
       const percent = genelToplam > 0 ? tutar / genelToplam : 0;
       return {
@@ -223,14 +216,14 @@ export default function AnalizScreen() {
           maximumFractionDigits: 2,
         }),
         percent: percent,
-        color: RENK_PALETI[index % RENK_PALETI.length], // Sırayla renk ata
+        // 🔴 ÇÖZÜM: Renk ataması artık sabit kategori listesinden alınıyor
+        color: KATEGORI_RENGI[katAd] || "#8B5CF6",
       };
     });
 
     dinamikSegments.sort((a, b) => b.percent - a.percent);
     setSegments(dinamikSegments);
 
-    // ÇARK ANİMASYONU TETİKLE
     animValue.setValue(0);
     Animated.timing(animValue, {
       toValue: -circumference,
@@ -267,7 +260,6 @@ export default function AnalizScreen() {
     );
   }
 
-  // 1. BOŞ EKRAN
   if (hamFisler.length === 0) {
     return (
       <ScrollView
@@ -323,7 +315,6 @@ export default function AnalizScreen() {
     );
   }
 
-  // 2. DOLU EKRAN (ÇARK HESAPLAMALARI)
   let currentOffset = 0;
   const pieData = segments.map((seg) => {
     const length = (seg.percent || 0) * circumference;
@@ -374,7 +365,6 @@ export default function AnalizScreen() {
         </Text>
       </View>
 
-      {/* DİNAMİK KUPA KARTI */}
       {kupaData.durum !== "yok" && (
         <LinearGradient
           colors={
@@ -418,7 +408,6 @@ export default function AnalizScreen() {
         </LinearGradient>
       )}
 
-      {/* DİNAMİK ZAMAN SEKMELERİ */}
       <View style={styles.zamanSekmeleri}>
         {(["BU HAFTA", "BU AY", "BU YIL"] as const).map((sekme) => (
           <TouchableOpacity
@@ -454,7 +443,6 @@ export default function AnalizScreen() {
               TL
             </Text>
           </View>
-          {/* SAĞ ÜSTTEKİ ROZET KALDIRILDI */}
         </View>
 
         <View style={styles.grafikAlani}>

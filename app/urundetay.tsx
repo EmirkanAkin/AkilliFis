@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
@@ -15,6 +16,7 @@ import {
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -27,13 +29,23 @@ import {
 } from "react-native";
 import { auth, db } from "../firebaseConfig";
 
-// KATEGORİ AYARLARI (Renk ve İkonlar)
+// KATEGORİ AYARLARI
 const KATEGORI_AYARLARI: any = {
-  Gıda: { renk: "#4CAF50", ikon: "nutrition" },
-  Temizlik: { renk: "#2196F3", ikon: "water" },
+  Market: { renk: "#1DB954", ikon: "cart" },
+  Kafe: { renk: "#00704A", ikon: "cafe" },
+  Alışveriş: { renk: "#FF6000", ikon: "bag-handle" },
+  Teknoloji: { renk: "#D62828", ikon: "laptop" },
+  Abonelik: { renk: "#5D00D2", ikon: "card" },
+  "Sebze/Meyve": { renk: "#1DB954", ikon: "leaf" },
+  Temizlik: { renk: "#3B82F6", ikon: "water" },
+  "Atıştırmalık/İçecek": { renk: "#F59E0B", ikon: "fast-food" },
+  "Temel Gıda": { renk: "#4CAF50", ikon: "restaurant" },
+  "Kafe/Restoran": { renk: "#EF4444", ikon: "cafe" },
+  "Kozmetik/Kişisel": { renk: "#EC4899", ikon: "color-wand" },
   Giyim: { renk: "#E91E63", ikon: "shirt" },
+  Sağlık: { renk: "#2196F3", ikon: "medkit" },
   Eğlence: { renk: "#FF9800", ikon: "game-controller" },
-  Diğer: { renk: "#9C27B0", ikon: "bag-handle" },
+  Diğer: { renk: "#8B5CF6", ikon: "bag-handle" },
 };
 
 export default function UrunDetayiScreen() {
@@ -48,6 +60,11 @@ export default function UrunDetayiScreen() {
     toplam: 0,
   });
   const [duzenlenenUrunler, setDuzenlenenUrunler] = useState<any[]>([]);
+
+  const [kategoriModalAcik, setKategoriModalAcik] = useState(false);
+  const [aktifKategoriSecimi, setAktifKategoriSecimi] = useState<number | null>(
+    null,
+  );
 
   useEffect(() => {
     if (!id) return;
@@ -103,10 +120,12 @@ export default function UrunDetayiScreen() {
   };
 
   const urunSil = (urunId: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setDuzenlenenUrunler((prev) => prev.filter((urun) => urun.id !== urunId));
   };
 
   const yeniUrunEkle = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const yeniId = Date.now().toString();
     setDuzenlenenUrunler([
       ...duzenlenenUrunler,
@@ -114,22 +133,27 @@ export default function UrunDetayiScreen() {
     ]);
   };
 
-  // KATEGORİ DEĞİŞTİRME BUTONU MANTIĞI
-  const kategoriDegistir = (urunId: string) => {
-    const kategorilerDizisi = Object.keys(KATEGORI_AYARLARI);
-    setDuzenlenenUrunler((prev) =>
-      prev.map((u) => {
-        if (u.id === urunId) {
-          const currentIndex = kategorilerDizisi.indexOf(u.kategori || "Diğer");
-          const nextIndex = (currentIndex + 1) % kategorilerDizisi.length;
-          return { ...u, kategori: kategorilerDizisi[nextIndex] };
-        }
-        return u;
-      }),
-    );
+  const kategoriSec = (secilenKat: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (aktifKategoriSecimi !== null) {
+      const guncelUrunler = [...duzenlenenUrunler];
+      guncelUrunler[aktifKategoriSecimi].kategori = secilenKat;
+      setDuzenlenenUrunler(guncelUrunler);
+    }
+    setKategoriModalAcik(false);
   };
 
+  // 🔴 ÇÖZÜM: FORM KONTROLÜ (Boş ürün adı veya fiyatı varsa butonu kilitler)
+  const formDolu =
+    duzenlenenUrunler.length > 0 &&
+    duzenlenenUrunler.every(
+      (u) => u.isim.trim() !== "" && u.fiyat.trim() !== "",
+    );
+
   const degisiklikleriFirebaseKaydet = async () => {
+    if (!formDolu) return; // Güvenlik katmanı
+
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setDuzenleModalAcik(false);
     setYukleniyor(true);
     try {
@@ -153,7 +177,7 @@ export default function UrunDetayiScreen() {
       const eklemeIslemleri = duzenlenenUrunler.map((urun) =>
         addDoc(collection(db, "Urunler"), {
           fis_id: id,
-          urun_adi: urun.isim,
+          urun_adi: urun.isim.trim(),
           fiyat: Number(urun.fiyat.replace(",", ".")),
           kategori: urun.kategori,
           kullanici_id: aktifUid,
@@ -172,12 +196,12 @@ export default function UrunDetayiScreen() {
       setFisDetay((prev) => ({ ...prev, toplam: yeniToplam }));
     } catch (error) {
       console.error(error);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setYukleniyor(false);
     }
   };
 
-  // ÜRÜNLERİ KATEGORİYE GÖRE GRUPLA
   const gruplanmisKategoriler = duzenlenenUrunler.reduce((acc: any, urun) => {
     const kat = urun.kategori || "Diğer";
     if (!acc[kat]) acc[kat] = { ad: kat, urunler: [], toplam: 0 };
@@ -212,7 +236,10 @@ export default function UrunDetayiScreen() {
       <View style={styles.ustBar}>
         <TouchableOpacity
           style={styles.geriButon}
-          onPress={() => router.back()}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.back();
+          }}
         >
           <Ionicons name="arrow-back" size={24} color="white" />
         </TouchableOpacity>
@@ -268,7 +295,10 @@ export default function UrunDetayiScreen() {
             </View>
             <View style={styles.tutarRozeti}>
               <Text style={styles.tutarMetinGoster}>
-                {toplamHesaplanan.toFixed(2).replace(".", ",")}
+                {toplamHesaplanan.toLocaleString("tr-TR", {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
               </Text>
               <Text style={styles.tutarMetinTL}> TL</Text>
             </View>
@@ -285,7 +315,7 @@ export default function UrunDetayiScreen() {
         </LinearGradient>
 
         <View style={styles.kategorilerBaslikSatiri}>
-          <Text style={styles.altBaslik}>KATEGORİLER</Text>
+          <Text style={styles.altBaslik}>KATEGORİ DETAYLARI</Text>
           <Text style={styles.urunSayisi}>{duzenlenenUrunler.length} ürün</Text>
         </View>
 
@@ -296,14 +326,14 @@ export default function UrunDetayiScreen() {
                 style={[
                   styles.kategoriIkonZemin,
                   {
-                    backgroundColor: `${KATEGORI_AYARLARI[kat.ad]?.renk || "#9C27B0"}26`,
+                    backgroundColor: `${KATEGORI_AYARLARI[kat.ad]?.renk || "#8B5CF6"}26`,
                   },
                 ]}
               >
                 <Ionicons
                   name={KATEGORI_AYARLARI[kat.ad]?.ikon || "bag-handle"}
                   size={18}
-                  color={KATEGORI_AYARLARI[kat.ad]?.renk || "#9C27B0"}
+                  color={KATEGORI_AYARLARI[kat.ad]?.renk || "#8B5CF6"}
                 />
               </View>
               <View style={styles.kategoriBaslikBilgi}>
@@ -313,16 +343,30 @@ export default function UrunDetayiScreen() {
                 </Text>
               </View>
               <Text style={styles.kategoriToplamTutar}>
-                {kat.toplam.toFixed(2).replace(".", ",")} TL
+                {kat.toplam.toLocaleString("tr-TR", {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}{" "}
+                TL
               </Text>
             </View>
 
             <View style={styles.urunlerListesi}>
               {kat.urunler.map((urun: any, index: number) => (
                 <View key={index} style={styles.urunSatiri}>
-                  <Text style={styles.urunAd}>
-                    · {urun.isim} — {urun.fiyat} TL
+                  <Text
+                    style={{
+                      color: "rgba(255,255,255,0.3)",
+                      marginRight: 6,
+                      fontSize: 14,
+                    }}
+                  >
+                    •
                   </Text>
+                  <Text style={styles.urunAd} numberOfLines={1}>
+                    {urun.isim}
+                  </Text>
+                  <Text style={styles.urunFiyatiSag}>{urun.fiyat} TL</Text>
                 </View>
               ))}
             </View>
@@ -334,7 +378,10 @@ export default function UrunDetayiScreen() {
         <TouchableOpacity
           style={styles.altButonTekli}
           activeOpacity={0.7}
-          onPress={() => setDuzenleModalAcik(true)}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            setDuzenleModalAcik(true);
+          }}
         >
           <Ionicons
             name="pencil-outline"
@@ -345,6 +392,7 @@ export default function UrunDetayiScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* DÜZENLEME MODALI */}
       <Modal
         visible={duzenleModalAcik}
         transparent={true}
@@ -362,7 +410,10 @@ export default function UrunDetayiScreen() {
               <Text style={styles.modalBaslik}>Ürünleri Düzenle</Text>
               <TouchableOpacity
                 style={styles.kapatIkonZemini}
-                onPress={() => setDuzenleModalAcik(false)}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setDuzenleModalAcik(false);
+                }}
               >
                 <Ionicons
                   name="close"
@@ -377,9 +428,14 @@ export default function UrunDetayiScreen() {
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
             >
-              {duzenlenenUrunler.map((urun) => (
+              {duzenlenenUrunler.map((urun, index) => (
                 <View key={urun.id} style={styles.duzenleSatiri}>
-                  <View style={styles.urunIsimInputZemini}>
+                  <View
+                    style={[
+                      styles.urunIsimInputZemini,
+                      urun.isim.trim() === "" && styles.inputHatali,
+                    ]}
+                  >
                     <TextInput
                       style={styles.urunIsimInput}
                       value={urun.isim}
@@ -391,7 +447,12 @@ export default function UrunDetayiScreen() {
                     />
                   </View>
 
-                  <View style={styles.urunFiyatInputZemini}>
+                  <View
+                    style={[
+                      styles.urunFiyatInputZemini,
+                      urun.fiyat.trim() === "" && styles.inputHatali,
+                    ]}
+                  >
                     <TextInput
                       style={styles.urunFiyatInput}
                       value={urun.fiyat}
@@ -405,20 +466,30 @@ export default function UrunDetayiScreen() {
                     <Text style={styles.urunFiyatParaBirimi}>TL</Text>
                   </View>
 
-                  {/* EKLENEN KATEGORİ DEĞİŞTİRME BUTONU */}
                   <TouchableOpacity
-                    onPress={() => kategoriDegistir(urun.id)}
+                    onPress={() => {
+                      Keyboard.dismiss();
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setAktifKategoriSecimi(index);
+                      setKategoriModalAcik(true);
+                    }}
                     style={{
                       marginLeft: 6,
                       padding: 10,
-                      backgroundColor: `${KATEGORI_AYARLARI[urun.kategori || "Diğer"]?.renk}26`,
+                      backgroundColor: `${KATEGORI_AYARLARI[urun.kategori || "Diğer"]?.renk || "#8B5CF6"}26`,
                       borderRadius: 10,
                     }}
                   >
                     <Ionicons
-                      name={KATEGORI_AYARLARI[urun.kategori || "Diğer"]?.ikon}
+                      name={
+                        KATEGORI_AYARLARI[urun.kategori || "Diğer"]?.ikon ||
+                        "bag-handle"
+                      }
                       size={18}
-                      color={KATEGORI_AYARLARI[urun.kategori || "Diğer"]?.renk}
+                      color={
+                        KATEGORI_AYARLARI[urun.kategori || "Diğer"]?.renk ||
+                        "#8B5CF6"
+                      }
                     />
                   </TouchableOpacity>
 
@@ -443,16 +514,105 @@ export default function UrunDetayiScreen() {
             </ScrollView>
 
             <View style={styles.modalAltButonKapsayici}>
+              {/* 🔴 ÇÖZÜM: FORM DOLU DEĞİLSE BUTON KİLİTLENİR */}
               <TouchableOpacity
-                style={styles.degisiklikleriKaydetButonu}
+                style={[
+                  styles.degisiklikleriKaydetButonu,
+                  !formDolu && styles.degisiklikleriKaydetButonPasif,
+                ]}
                 activeOpacity={0.8}
                 onPress={degisiklikleriFirebaseKaydet}
+                disabled={!formDolu}
               >
-                <Text style={styles.degisiklikleriKaydetMetni}>
+                <Text
+                  style={[
+                    styles.degisiklikleriKaydetMetni,
+                    !formDolu && styles.degisiklikleriKaydetMetinPasif,
+                  ]}
+                >
                   Değişiklikleri Uygula
                 </Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* ORTAK KATEGORİ SEÇİM MODALI */}
+      <Modal
+        visible={kategoriModalAcik}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setKategoriModalAcik(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.kategoriModalArkaPlan}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <View style={styles.modalKutu}>
+            <View style={styles.modalUstBar}>
+              <Text style={styles.modalBaslik}>Ürün Kategorisi Seç</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setKategoriModalAcik(false);
+                }}
+              >
+                <Ionicons
+                  name="close-circle"
+                  size={28}
+                  color="rgba(255,255,255,0.4)"
+                />
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              style={styles.kategoriListesi}
+              showsVerticalScrollIndicator={false}
+            >
+              {Object.keys(KATEGORI_AYARLARI).map((kat, index) => {
+                const aktifKat =
+                  aktifKategoriSecimi !== null
+                    ? duzenlenenUrunler[aktifKategoriSecimi]?.kategori
+                    : "";
+                const isAktif = aktifKat === kat;
+
+                return (
+                  <TouchableOpacity
+                    key={index}
+                    style={[
+                      styles.kategoriSecenek,
+                      isAktif && styles.kategoriSecenekAktif,
+                    ]}
+                    onPress={() => kategoriSec(kat)}
+                  >
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 12,
+                      }}
+                    >
+                      <Ionicons
+                        name={KATEGORI_AYARLARI[kat].ikon}
+                        size={20}
+                        color={KATEGORI_AYARLARI[kat].renk}
+                      />
+                      <Text
+                        style={[
+                          styles.kategoriMetin,
+                          isAktif && styles.kategoriMetinAktif,
+                        ]}
+                      >
+                        {kat}
+                      </Text>
+                    </View>
+                    {isAktif && (
+                      <Ionicons name="checkmark" size={20} color="#1DB954" />
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -638,11 +798,17 @@ const styles = StyleSheet.create({
   },
   kategoriToplamTutar: { color: "white", fontSize: 14, fontWeight: "700" },
   urunlerListesi: { paddingLeft: 52 },
-  urunSatiri: { marginBottom: 6 },
+  urunSatiri: { flexDirection: "row", alignItems: "center", marginBottom: 8 },
   urunAd: {
-    color: "rgba(255, 255, 255, 0.35)",
-    fontSize: 11,
+    flex: 1,
+    color: "rgba(255, 255, 255, 0.55)",
+    fontSize: 12,
     fontWeight: "400",
+  },
+  urunFiyatiSag: {
+    color: "rgba(255, 255, 255, 0.8)",
+    fontSize: 12,
+    fontWeight: "600",
   },
   altButonlarKapsayici: {
     position: "absolute",
@@ -679,15 +845,11 @@ const styles = StyleSheet.create({
     backgroundColor: "#18181B",
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    paddingHorizontal: 24,
+    padding: 24,
+    paddingBottom: 40,
     maxHeight: "85%",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 20,
-    elevation: 20,
+    borderColor: "rgba(255,255,255,0.08)",
   },
   tutuamacKapsayici: { alignItems: "center", paddingTop: 12, marginBottom: 16 },
   tutuamac: {
@@ -790,6 +952,13 @@ const styles = StyleSheet.create({
     marginTop: 10,
     marginBottom: Platform.OS === "ios" ? 20 : 10,
   },
+
+  // 🔴 BOŞ KALAN KUTULARI KIZARTMAK İÇİN YENİ STİL
+  inputHatali: {
+    borderColor: "rgba(255, 107, 107, 0.5)",
+    backgroundColor: "rgba(255, 107, 107, 0.05)",
+  },
+
   degisiklikleriKaydetButonu: {
     width: "100%",
     height: 60,
@@ -809,4 +978,33 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: 0.3,
   },
+  degisiklikleriKaydetButonPasif: {
+    backgroundColor: "rgba(29, 185, 84, 0.15)",
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  degisiklikleriKaydetMetinPasif: { color: "rgba(255, 255, 255, 0.3)" },
+
+  kategoriModalArkaPlan: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.8)",
+    justifyContent: "flex-end",
+  },
+  kategoriListesi: { marginBottom: 20, maxHeight: 300 },
+  kategoriSecenek: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.05)",
+  },
+  kategoriSecenekAktif: {
+    backgroundColor: "rgba(29, 185, 84, 0.05)",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    borderBottomWidth: 0,
+  },
+  kategoriMetin: { color: "rgba(255,255,255,0.7)", fontSize: 16 },
+  kategoriMetinAktif: { color: "#1DB954", fontWeight: "700" },
 });
