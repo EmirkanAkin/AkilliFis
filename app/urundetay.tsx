@@ -13,7 +13,7 @@ import {
   updateDoc,
   where,
 } from "firebase/firestore";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Keyboard,
@@ -25,6 +25,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   View,
 } from "react-native";
 import { auth, db } from "../firebaseConfig";
@@ -65,6 +66,14 @@ export default function UrunDetayiScreen() {
   const [aktifKategoriSecimi, setAktifKategoriSecimi] = useState<number | null>(
     null,
   );
+
+  const [magazaModalAcik, setMagazaModalAcik] = useState(false);
+  const [geciciMagazaAd, setGeciciMagazaAd] = useState("");
+  const magazaInputRef = useRef<TextInput>(null);
+
+  // SİLME MODALI STATELERİ
+  const [silmeModalAcik, setSilmeModalAcik] = useState(false);
+  const [siliyor, setSiliyor] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -143,7 +152,22 @@ export default function UrunDetayiScreen() {
     setKategoriModalAcik(false);
   };
 
-  // 🔴 ÇÖZÜM: FORM KONTROLÜ (Boş ürün adı veya fiyatı varsa butonu kilitler)
+  const magazaAdiniKaydet = async () => {
+    if (!geciciMagazaAd.trim()) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setMagazaModalAcik(false);
+
+    try {
+      const fisRef = doc(db, "Fisler", id as string);
+      await updateDoc(fisRef, { magaza_adi: geciciMagazaAd.trim() });
+      setFisDetay((prev) => ({ ...prev, magaza: geciciMagazaAd.trim() }));
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      console.error(error);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    }
+  };
+
   const formDolu =
     duzenlenenUrunler.length > 0 &&
     duzenlenenUrunler.every(
@@ -151,7 +175,7 @@ export default function UrunDetayiScreen() {
     );
 
   const degisiklikleriFirebaseKaydet = async () => {
-    if (!formDolu) return; // Güvenlik katmanı
+    if (!formDolu) return;
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setDuzenleModalAcik(false);
@@ -202,6 +226,34 @@ export default function UrunDetayiScreen() {
     }
   };
 
+  const fisiKompleSil = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    setSilmeModalAcik(true);
+  };
+
+  const gercektenFisiSil = async () => {
+    setSiliyor(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    try {
+      await deleteDoc(doc(db, "Fisler", id as string));
+      const q = query(collection(db, "Urunler"), where("fis_id", "==", id));
+      const urunlerSnap = await getDocs(q);
+      const silmeIslemleri = urunlerSnap.docs.map((d) =>
+        deleteDoc(doc(db, "Urunler", d.id)),
+      );
+      await Promise.all(silmeIslemleri);
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setSilmeModalAcik(false);
+      router.replace("/(tabs)");
+    } catch (error) {
+      console.error("Fiş silinirken hata:", error);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setSiliyor(false);
+    }
+  };
+
   const gruplanmisKategoriler = duzenlenenUrunler.reduce((acc: any, urun) => {
     const kat = urun.kategori || "Diğer";
     if (!acc[kat]) acc[kat] = { ad: kat, urunler: [], toplam: 0 };
@@ -232,389 +284,524 @@ export default function UrunDetayiScreen() {
   }
 
   return (
-    <View style={styles.anaEkran}>
-      <View style={styles.ustBar}>
-        <TouchableOpacity
-          style={styles.geriButon}
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            router.back();
-          }}
-        >
-          <Ionicons name="arrow-back" size={24} color="white" />
-        </TouchableOpacity>
-        <Text style={styles.sayfaBaslik}>Ürün Detayları</Text>
-        <View style={{ width: 40 }} />
-      </View>
+    <View style={{ flex: 1 }}>
+      <View style={styles.anaEkran}>
+        <View style={styles.ustBar}>
+          <TouchableOpacity
+            style={[
+              styles.geriButon,
+              (yukleniyor || siliyor) && { opacity: 0.4 },
+            ]}
+            disabled={yukleniyor || siliyor}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.back();
+            }}
+          >
+            <Ionicons name="arrow-back" size={24} color="white" />
+          </TouchableOpacity>
+          <Text style={styles.sayfaBaslik}>Ürün Detayları</Text>
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 100 }}
-      >
-        <LinearGradient
-          colors={["rgba(39, 39, 42, 0.90)", "rgba(30, 30, 35, 0.90)"]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.ozetKarti}
-        >
-          <View style={styles.ozetSolKisim}>
-            <View style={styles.ozetHeader}>
-              <View style={styles.ikonZemini}>
-                <Text style={styles.ikonHarf}>
-                  {fisDetay.magaza?.[0]?.toUpperCase() || "F"}
-                </Text>
-              </View>
-              <View>
-                <Text style={styles.magazaAd}>
-                  {fisDetay.magaza.toUpperCase()}
-                </Text>
-                <Text style={styles.tarihMetin}>
-                  {fisDetay.tarih.toUpperCase()}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.bilgiSatiri}>
-              <Ionicons
-                name="location-outline"
-                size={14}
-                color="rgba(255,255,255,0.35)"
-              />
-              <Text style={styles.bilgiMetin}>Kayıtlı Lokasyon</Text>
-            </View>
-            <View style={styles.bilgiSatiri}>
-              <Ionicons
-                name="pricetag-outline"
-                size={14}
-                color="rgba(255,255,255,0.35)"
-              />
-              <Text style={styles.bilgiMetin}>
-                Fiş{" "}
-                <Text style={{ color: "rgba(255, 255, 255, 0.20)" }}>·</Text>{" "}
-                {duzenlenenUrunler.length} kalem
-              </Text>
-            </View>
-            <View style={styles.tutarRozeti}>
-              <Text style={styles.tutarMetinGoster}>
-                {toplamHesaplanan.toLocaleString("tr-TR", {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
-              </Text>
-              <Text style={styles.tutarMetinTL}> TL</Text>
-            </View>
-          </View>
-          <View style={styles.miniFisKutu}>
-            <View style={styles.fisUstCizgi} />
-            <View style={styles.fisNoktaliAyrac} />
-            <View style={styles.fisSatirCizgi} />
-            <View style={[styles.fisSatirCizgi, { width: "50%" }]} />
-            <View style={styles.fisSatirCizgi} />
-            <View style={[styles.fisSatirCizgi, { width: "70%" }]} />
-            <View style={styles.fisToplamCizgi} />
-          </View>
-        </LinearGradient>
-
-        <View style={styles.kategorilerBaslikSatiri}>
-          <Text style={styles.altBaslik}>KATEGORİ DETAYLARI</Text>
-          <Text style={styles.urunSayisi}>{duzenlenenUrunler.length} ürün</Text>
+          <TouchableOpacity
+            style={[
+              styles.silButonUst,
+              (yukleniyor || siliyor) && { opacity: 0.4 },
+            ]}
+            disabled={yukleniyor || siliyor}
+            onPress={fisiKompleSil}
+          >
+            <Ionicons name="trash-outline" size={22} color="#FF6B6B" />
+          </TouchableOpacity>
         </View>
 
-        {Object.values(gruplanmisKategoriler).map((kat: any) => (
-          <View key={kat.ad} style={styles.kategoriKarti}>
-            <View style={styles.kategoriHeader}>
-              <View
-                style={[
-                  styles.kategoriIkonZemin,
-                  {
-                    backgroundColor: `${KATEGORI_AYARLARI[kat.ad]?.renk || "#8B5CF6"}26`,
-                  },
-                ]}
-              >
-                <Ionicons
-                  name={KATEGORI_AYARLARI[kat.ad]?.ikon || "bag-handle"}
-                  size={18}
-                  color={KATEGORI_AYARLARI[kat.ad]?.renk || "#8B5CF6"}
-                />
-              </View>
-              <View style={styles.kategoriBaslikBilgi}>
-                <Text style={styles.kategoriAd}>{kat.ad}</Text>
-                <Text style={styles.kategoriKalem}>
-                  {kat.urunler.length} kalem
-                </Text>
-              </View>
-              <Text style={styles.kategoriToplamTutar}>
-                {kat.toplam.toLocaleString("tr-TR", {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}{" "}
-                TL
-              </Text>
-            </View>
-
-            <View style={styles.urunlerListesi}>
-              {kat.urunler.map((urun: any, index: number) => (
-                <View key={index} style={styles.urunSatiri}>
-                  <Text
-                    style={{
-                      color: "rgba(255,255,255,0.3)",
-                      marginRight: 6,
-                      fontSize: 14,
-                    }}
-                  >
-                    •
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: 100 }}
+        >
+          <LinearGradient
+            colors={["rgba(39, 39, 42, 0.90)", "rgba(30, 30, 35, 0.90)"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.ozetKarti}
+          >
+            <View style={styles.ozetSolKisim}>
+              <View style={styles.ozetHeader}>
+                <View style={styles.ikonZemini}>
+                  <Text style={styles.ikonHarf}>
+                    {fisDetay.magaza?.[0]?.toUpperCase() || "F"}
                   </Text>
-                  <Text style={styles.urunAd} numberOfLines={1}>
-                    {urun.isim}
-                  </Text>
-                  <Text style={styles.urunFiyatiSag}>{urun.fiyat} TL</Text>
                 </View>
-              ))}
-            </View>
-          </View>
-        ))}
-      </ScrollView>
-
-      <View style={styles.altButonlarKapsayici}>
-        <TouchableOpacity
-          style={styles.altButonTekli}
-          activeOpacity={0.7}
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            setDuzenleModalAcik(true);
-          }}
-        >
-          <Ionicons
-            name="pencil-outline"
-            size={16}
-            color="rgba(255, 255, 255, 0.80)"
-          />
-          <Text style={styles.altButonMetin}>Harcamayı Düzenle</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* DÜZENLEME MODALI */}
-      <Modal
-        visible={duzenleModalAcik}
-        transparent={true}
-        animationType="slide"
-      >
-        <KeyboardAvoidingView
-          style={styles.modalArkaPlan}
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-        >
-          <View style={styles.modalKutu}>
-            <View style={styles.tutuamacKapsayici}>
-              <View style={styles.tutuamac} />
-            </View>
-            <View style={styles.modalUstBar}>
-              <Text style={styles.modalBaslik}>Ürünleri Düzenle</Text>
-              <TouchableOpacity
-                style={styles.kapatIkonZemini}
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setDuzenleModalAcik(false);
-                }}
-              >
-                <Ionicons
-                  name="close"
-                  size={18}
-                  color="rgba(255,255,255,0.7)"
-                />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView
-              style={styles.duzenleListe}
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-            >
-              {duzenlenenUrunler.map((urun, index) => (
-                <View key={urun.id} style={styles.duzenleSatiri}>
-                  <View
-                    style={[
-                      styles.urunIsimInputZemini,
-                      urun.isim.trim() === "" && styles.inputHatali,
-                    ]}
-                  >
-                    <TextInput
-                      style={styles.urunIsimInput}
-                      value={urun.isim}
-                      onChangeText={(text) => isimGuncelle(text, urun.id)}
-                      selectionColor="#1DB954"
-                      cursorColor="#1DB954"
-                      placeholder="Ürün adı"
-                      placeholderTextColor="rgba(255,255,255,0.2)"
-                    />
-                  </View>
-
-                  <View
-                    style={[
-                      styles.urunFiyatInputZemini,
-                      urun.fiyat.trim() === "" && styles.inputHatali,
-                    ]}
-                  >
-                    <TextInput
-                      style={styles.urunFiyatInput}
-                      value={urun.fiyat}
-                      onChangeText={(text) => fiyatGuncelle(text, urun.id)}
-                      keyboardType="decimal-pad"
-                      selectionColor="#1DB954"
-                      cursorColor="#1DB954"
-                      placeholder="0,00"
-                      placeholderTextColor="rgba(29, 185, 84, 0.3)"
-                    />
-                    <Text style={styles.urunFiyatParaBirimi}>TL</Text>
-                  </View>
-
+                <View style={{ flex: 1 }}>
                   <TouchableOpacity
                     onPress={() => {
-                      Keyboard.dismiss();
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      setAktifKategoriSecimi(index);
-                      setKategoriModalAcik(true);
+                      setGeciciMagazaAd(fisDetay.magaza);
+                      setMagazaModalAcik(true);
+                      setTimeout(() => magazaInputRef.current?.focus(), 100);
                     }}
-                    style={{
-                      marginLeft: 6,
-                      padding: 10,
-                      backgroundColor: `${KATEGORI_AYARLARI[urun.kategori || "Diğer"]?.renk || "#8B5CF6"}26`,
-                      borderRadius: 10,
-                    }}
+                    style={{ flexDirection: "row", alignItems: "center" }}
                   >
+                    <Text style={styles.magazaAd}>
+                      {fisDetay.magaza.toUpperCase()}
+                    </Text>
                     <Ionicons
-                      name={
-                        KATEGORI_AYARLARI[urun.kategori || "Diğer"]?.ikon ||
-                        "bag-handle"
-                      }
-                      size={18}
-                      color={
-                        KATEGORI_AYARLARI[urun.kategori || "Diğer"]?.renk ||
-                        "#8B5CF6"
-                      }
+                      name="pencil"
+                      size={12}
+                      color="rgba(255,255,255,0.4)"
+                      style={{ marginLeft: 6 }}
                     />
                   </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.urunSilButonu}
-                    onPress={() => urunSil(urun.id)}
-                  >
-                    <Ionicons name="trash-outline" size={16} color="#FF6B6B" />
-                  </TouchableOpacity>
+                  <Text style={styles.tarihMetin}>
+                    {fisDetay.tarih.toUpperCase()}
+                  </Text>
                 </View>
-              ))}
+              </View>
+              <View style={styles.bilgiSatiri}>
+                <Ionicons
+                  name="location-outline"
+                  size={14}
+                  color="rgba(255,255,255,0.35)"
+                />
+                <Text style={styles.bilgiMetin}>Kayıtlı Lokasyon</Text>
+              </View>
+              <View style={styles.bilgiSatiri}>
+                <Ionicons
+                  name="pricetag-outline"
+                  size={14}
+                  color="rgba(255,255,255,0.35)"
+                />
+                <Text style={styles.bilgiMetin}>
+                  Fiş{" "}
+                  <Text style={{ color: "rgba(255, 255, 255, 0.20)" }}>·</Text>{" "}
+                  {duzenlenenUrunler.length} kalem
+                </Text>
+              </View>
+              <View style={styles.tutarRozeti}>
+                <Text style={styles.tutarMetinGoster}>
+                  {toplamHesaplanan.toLocaleString("tr-TR", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
+                </Text>
+                <Text style={styles.tutarMetinTL}> TL</Text>
+              </View>
+            </View>
+            <View style={styles.miniFisKutu}>
+              <View style={styles.fisUstCizgi} />
+              <View style={styles.fisNoktaliAyrac} />
+              <View style={styles.fisSatirCizgi} />
+              <View style={[styles.fisSatirCizgi, { width: "50%" }]} />
+              <View style={styles.fisSatirCizgi} />
+              <View style={[styles.fisSatirCizgi, { width: "70%" }]} />
+              <View style={styles.fisToplamCizgi} />
+            </View>
+          </LinearGradient>
 
-              <TouchableOpacity
-                style={styles.yeniUrunEkleZemini}
-                activeOpacity={0.7}
-                onPress={yeniUrunEkle}
-              >
-                <Ionicons name="add" size={18} color="#1DB954" />
-                <Text style={styles.yeniUrunEkleMetni}>Yeni Ürün Ekle</Text>
-              </TouchableOpacity>
-              <View style={{ height: 20 }} />
-            </ScrollView>
+          <View style={styles.kategorilerBaslikSatiri}>
+            <Text style={styles.altBaslik}>KATEGORİ DETAYLARI</Text>
+            <Text style={styles.urunSayisi}>
+              {duzenlenenUrunler.length} ürün
+            </Text>
+          </View>
 
-            <View style={styles.modalAltButonKapsayici}>
-              {/* 🔴 ÇÖZÜM: FORM DOLU DEĞİLSE BUTON KİLİTLENİR */}
-              <TouchableOpacity
-                style={[
-                  styles.degisiklikleriKaydetButonu,
-                  !formDolu && styles.degisiklikleriKaydetButonPasif,
-                ]}
-                activeOpacity={0.8}
-                onPress={degisiklikleriFirebaseKaydet}
-                disabled={!formDolu}
-              >
-                <Text
+          {Object.values(gruplanmisKategoriler).map((kat: any) => (
+            <View key={kat.ad} style={styles.kategoriKarti}>
+              <View style={styles.kategoriHeader}>
+                <View
                   style={[
-                    styles.degisiklikleriKaydetMetni,
-                    !formDolu && styles.degisiklikleriKaydetMetinPasif,
+                    styles.kategoriIkonZemin,
+                    {
+                      backgroundColor: `${KATEGORI_AYARLARI[kat.ad]?.renk || "#8B5CF6"}26`,
+                    },
                   ]}
                 >
-                  Değişiklikleri Uygula
+                  <Ionicons
+                    name={KATEGORI_AYARLARI[kat.ad]?.ikon || "bag-handle"}
+                    size={18}
+                    color={KATEGORI_AYARLARI[kat.ad]?.renk || "#8B5CF6"}
+                  />
+                </View>
+                <View style={styles.kategoriBaslikBilgi}>
+                  <Text style={styles.kategoriAd}>{kat.ad}</Text>
+                  <Text style={styles.kategoriKalem}>
+                    {kat.urunler.length} kalem
+                  </Text>
+                </View>
+                <Text style={styles.kategoriToplamTutar}>
+                  {kat.toplam.toLocaleString("tr-TR", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}{" "}
+                  TL
                 </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+              </View>
 
-      {/* ORTAK KATEGORİ SEÇİM MODALI */}
-      <Modal
-        visible={kategoriModalAcik}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setKategoriModalAcik(false)}
-      >
-        <KeyboardAvoidingView
-          style={styles.kategoriModalArkaPlan}
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-        >
-          <View style={styles.modalKutu}>
-            <View style={styles.modalUstBar}>
-              <Text style={styles.modalBaslik}>Ürün Kategorisi Seç</Text>
-              <TouchableOpacity
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setKategoriModalAcik(false);
-                }}
-              >
-                <Ionicons
-                  name="close-circle"
-                  size={28}
-                  color="rgba(255,255,255,0.4)"
-                />
-              </TouchableOpacity>
-            </View>
-            <ScrollView
-              style={styles.kategoriListesi}
-              showsVerticalScrollIndicator={false}
-            >
-              {Object.keys(KATEGORI_AYARLARI).map((kat, index) => {
-                const aktifKat =
-                  aktifKategoriSecimi !== null
-                    ? duzenlenenUrunler[aktifKategoriSecimi]?.kategori
-                    : "";
-                const isAktif = aktifKat === kat;
-
-                return (
-                  <TouchableOpacity
-                    key={index}
-                    style={[
-                      styles.kategoriSecenek,
-                      isAktif && styles.kategoriSecenekAktif,
-                    ]}
-                    onPress={() => kategoriSec(kat)}
-                  >
-                    <View
+              <View style={styles.urunlerListesi}>
+                {kat.urunler.map((urun: any, index: number) => (
+                  <View key={index} style={styles.urunSatiri}>
+                    <Text
                       style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: 12,
+                        color: "rgba(255,255,255,0.3)",
+                        marginRight: 6,
+                        fontSize: 14,
+                      }}
+                    >
+                      •
+                    </Text>
+                    <Text style={styles.urunAd} numberOfLines={1}>
+                      {urun.isim}
+                    </Text>
+                    <Text style={styles.urunFiyatiSag}>{urun.fiyat} TL</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          ))}
+        </ScrollView>
+
+        <View style={styles.altButonlarKapsayici}>
+          <TouchableOpacity
+            style={styles.altButonTekli}
+            activeOpacity={0.7}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              setDuzenleModalAcik(true);
+            }}
+          >
+            <Ionicons
+              name="pencil-outline"
+              size={16}
+              color="rgba(255, 255, 255, 0.80)"
+            />
+            <Text style={styles.altButonMetin}>Harcamayı Düzenle</Text>
+          </TouchableOpacity>
+        </View>
+
+        <Modal
+          visible={duzenleModalAcik}
+          transparent={true}
+          animationType="slide"
+        >
+          <KeyboardAvoidingView
+            style={styles.kategoriModalArkaPlan}
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+          >
+            <View style={styles.kategoriModalKutu}>
+              <View style={styles.tutuamacKapsayici}>
+                <View style={styles.tutuamac} />
+              </View>
+              <View style={styles.modalUstBar}>
+                <Text style={styles.modalBaslik}>Ürünleri Düzenle</Text>
+                <TouchableOpacity
+                  style={styles.kapatIkonZemini}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setDuzenleModalAcik(false);
+                  }}
+                >
+                  <Ionicons
+                    name="close"
+                    size={18}
+                    color="rgba(255,255,255,0.7)"
+                  />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView
+                style={styles.duzenleListe}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+              >
+                {duzenlenenUrunler.map((urun, index) => (
+                  <View key={urun.id} style={styles.duzenleSatiri}>
+                    <View
+                      style={[
+                        styles.urunIsimInputZemini,
+                        urun.isim.trim() === "" && styles.inputHatali,
+                      ]}
+                    >
+                      <TextInput
+                        style={styles.urunIsimInput}
+                        value={urun.isim}
+                        onChangeText={(text) => isimGuncelle(text, urun.id)}
+                        selectionColor="#1DB954"
+                        cursorColor="#1DB954"
+                        placeholder="Ürün adı"
+                        placeholderTextColor="rgba(255,255,255,0.2)"
+                      />
+                    </View>
+
+                    <View
+                      style={[
+                        styles.urunFiyatInputZemini,
+                        urun.fiyat.trim() === "" && styles.inputHatali,
+                      ]}
+                    >
+                      <TextInput
+                        style={styles.urunFiyatInput}
+                        value={urun.fiyat}
+                        onChangeText={(text) => fiyatGuncelle(text, urun.id)}
+                        keyboardType="decimal-pad"
+                        selectionColor="#1DB954"
+                        cursorColor="#1DB954"
+                        placeholder="0,00"
+                        placeholderTextColor="rgba(29, 185, 84, 0.3)"
+                      />
+                      <Text style={styles.urunFiyatParaBirimi}>TL</Text>
+                    </View>
+
+                    <TouchableOpacity
+                      onPress={() => {
+                        Keyboard.dismiss();
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        setAktifKategoriSecimi(index);
+                        setKategoriModalAcik(true);
+                      }}
+                      style={{
+                        marginLeft: 6,
+                        padding: 10,
+                        backgroundColor: `${KATEGORI_AYARLARI[urun.kategori || "Diğer"]?.renk || "#8B5CF6"}26`,
+                        borderRadius: 10,
                       }}
                     >
                       <Ionicons
-                        name={KATEGORI_AYARLARI[kat].ikon}
-                        size={20}
-                        color={KATEGORI_AYARLARI[kat].renk}
+                        name={
+                          KATEGORI_AYARLARI[urun.kategori || "Diğer"]?.ikon ||
+                          "bag-handle"
+                        }
+                        size={18}
+                        color={
+                          KATEGORI_AYARLARI[urun.kategori || "Diğer"]?.renk ||
+                          "#8B5CF6"
+                        }
                       />
-                      <Text
-                        style={[
-                          styles.kategoriMetin,
-                          isAktif && styles.kategoriMetinAktif,
-                        ]}
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.urunSilButonu}
+                      onPress={() => urunSil(urun.id)}
+                    >
+                      <Ionicons
+                        name="trash-outline"
+                        size={16}
+                        color="#FF6B6B"
+                      />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+
+                <TouchableOpacity
+                  style={styles.yeniUrunEkleZemini}
+                  activeOpacity={0.7}
+                  onPress={yeniUrunEkle}
+                >
+                  <Ionicons name="add" size={18} color="#1DB954" />
+                  <Text style={styles.yeniUrunEkleMetni}>Yeni Ürün Ekle</Text>
+                </TouchableOpacity>
+                <View style={{ height: 20 }} />
+              </ScrollView>
+
+              <View style={styles.modalAltButonKapsayici}>
+                <TouchableOpacity
+                  style={[
+                    styles.degisiklikleriKaydetButonu,
+                    !formDolu && styles.degisiklikleriKaydetButonPasif,
+                  ]}
+                  activeOpacity={0.8}
+                  onPress={degisiklikleriFirebaseKaydet}
+                  disabled={!formDolu}
+                >
+                  <Text
+                    style={[
+                      styles.degisiklikleriKaydetMetni,
+                      !formDolu && styles.degisiklikleriKaydetMetinPasif,
+                    ]}
+                  >
+                    Değişiklikleri Uygula
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
+
+        <Modal
+          visible={kategoriModalAcik}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={() => setKategoriModalAcik(false)}
+        >
+          <KeyboardAvoidingView
+            style={styles.kategoriModalArkaPlan}
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+          >
+            <View style={styles.modalKutu}>
+              <View style={styles.modalUstBar}>
+                <Text style={styles.modalBaslik}>Ürün Kategorisi Seç</Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setKategoriModalAcik(false);
+                  }}
+                >
+                  <Ionicons
+                    name="close-circle"
+                    size={28}
+                    color="rgba(255,255,255,0.4)"
+                  />
+                </TouchableOpacity>
+              </View>
+              <ScrollView
+                style={styles.kategoriListesi}
+                showsVerticalScrollIndicator={false}
+              >
+                {Object.keys(KATEGORI_AYARLARI).map((kat, index) => {
+                  const aktifKat =
+                    aktifKategoriSecimi !== null
+                      ? duzenlenenUrunler[aktifKategoriSecimi]?.kategori
+                      : "";
+                  const isAktif = aktifKat === kat;
+
+                  return (
+                    <TouchableOpacity
+                      key={index}
+                      style={[
+                        styles.kategoriSecenek,
+                        isAktif && styles.kategoriSecenekAktif,
+                      ]}
+                      onPress={() => kategoriSec(kat)}
+                    >
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 12,
+                        }}
                       >
-                        {kat}
-                      </Text>
-                    </View>
-                    {isAktif && (
-                      <Ionicons name="checkmark" size={20} color="#1DB954" />
-                    )}
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+                        <Ionicons
+                          name={KATEGORI_AYARLARI[kat].ikon}
+                          size={20}
+                          color={KATEGORI_AYARLARI[kat].renk}
+                        />
+                        <Text
+                          style={[
+                            styles.kategoriMetin,
+                            isAktif && styles.kategoriMetinAktif,
+                          ]}
+                        >
+                          {kat}
+                        </Text>
+                      </View>
+                      {isAktif && (
+                        <Ionicons name="checkmark" size={20} color="#1DB954" />
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
+
+        <Modal
+          visible={magazaModalAcik}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setMagazaModalAcik(false)}
+        >
+          <KeyboardAvoidingView
+            style={styles.magazaModalZemin}
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+          >
+            <TouchableWithoutFeedback
+              onPress={() => {
+                Keyboard.dismiss();
+                setMagazaModalAcik(false);
+              }}
+            >
+              <View style={styles.seffafAlan} />
+            </TouchableWithoutFeedback>
+
+            <View style={styles.magazaKartIcerik}>
+              <View style={styles.tutuamacKapsayici}>
+                <View style={styles.tutuamac} />
+              </View>
+              <Text style={styles.magazaBaslik}>Mağaza Düzenle</Text>
+              <View style={styles.magazaFormGrubu}>
+                <Text style={styles.magazaEtiket}>Mağaza Adı</Text>
+                <View style={styles.magazaInputZemin}>
+                  <Ionicons
+                    name="storefront-outline"
+                    size={18}
+                    color="#1DB954"
+                    style={{ marginRight: 10 }}
+                  />
+                  <TextInput
+                    ref={magazaInputRef}
+                    style={styles.magazaInput}
+                    placeholder="Mağaza adını girin"
+                    placeholderTextColor="rgba(255, 255, 255, 0.50)"
+                    value={geciciMagazaAd}
+                    onChangeText={setGeciciMagazaAd}
+                    cursorColor="#1DB954"
+                  />
+                </View>
+              </View>
+
+              <TouchableOpacity
+                style={[
+                  styles.magazaOnaylaButon,
+                  geciciMagazaAd.trim() === "" && styles.magazaOnaylaButonPasif,
+                ]}
+                onPress={magazaAdiniKaydet}
+                disabled={geciciMagazaAd.trim() === ""}
+              >
+                <Text style={styles.magazaOnaylaButonMetin}>Güncelle</Text>
+              </TouchableOpacity>
+              <View style={{ height: 30 }} />
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
+      </View>
+
+      {/* SİLME MODALI */}
+      <Modal visible={silmeModalAcik} transparent={true} animationType="fade">
+        <View style={styles.silmeModalArkaPlan}>
+          <View style={styles.silmeModalKutu}>
+            <View style={styles.silmeModalIkonZemin}>
+              <Ionicons name="trash-outline" size={32} color="#FF6B6B" />
+            </View>
+            <Text style={styles.silmeModalBaslik}>Fişi Sil</Text>
+            <Text style={styles.silmeModalMesaj}>
+              Bu fişi tamamen silmek istediğinize emin misiniz? İşlem geri
+              alınamaz.
+            </Text>
+
+            <View style={styles.silmeModalButonKapsayici}>
+              <TouchableOpacity
+                style={styles.silmeModalIptalButon}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setSilmeModalAcik(false);
+                }}
+                disabled={siliyor}
+              >
+                <Text style={styles.silmeModalIptalMetin}>İptal</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.silmeModalOnayButon}
+                onPress={gercektenFisiSil}
+                disabled={siliyor}
+              >
+                {siliyor ? (
+                  <ActivityIndicator size="small" color="white" />
+                ) : (
+                  <Text style={styles.silmeModalOnayMetin}>Evet, Sil</Text>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
-        </KeyboardAvoidingView>
+        </View>
       </Modal>
     </View>
   );
@@ -637,6 +824,12 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
   },
   sayfaBaslik: { color: "white", fontSize: 18, fontWeight: "700" },
+  silButonUst: {
+    width: 40,
+    height: 40,
+    justifyContent: "center",
+    alignItems: "flex-end",
+  },
   ozetKarti: {
     flexDirection: "row",
     marginHorizontal: 20,
@@ -836,12 +1029,12 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     letterSpacing: 0.5,
   },
-  modalArkaPlan: {
+  kategoriModalArkaPlan: {
     flex: 1,
+    backgroundColor: "rgba(0,0,0,0.8)",
     justifyContent: "flex-end",
-    backgroundColor: "rgba(0, 0, 0, 0.6)",
   },
-  modalKutu: {
+  kategoriModalKutu: {
     backgroundColor: "#18181B",
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
@@ -952,13 +1145,10 @@ const styles = StyleSheet.create({
     marginTop: 10,
     marginBottom: Platform.OS === "ios" ? 20 : 10,
   },
-
-  // 🔴 BOŞ KALAN KUTULARI KIZARTMAK İÇİN YENİ STİL
   inputHatali: {
     borderColor: "rgba(255, 107, 107, 0.5)",
     backgroundColor: "rgba(255, 107, 107, 0.05)",
   },
-
   degisiklikleriKaydetButonu: {
     width: "100%",
     height: 60,
@@ -984,11 +1174,15 @@ const styles = StyleSheet.create({
     elevation: 0,
   },
   degisiklikleriKaydetMetinPasif: { color: "rgba(255, 255, 255, 0.3)" },
-
-  kategoriModalArkaPlan: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.8)",
-    justifyContent: "flex-end",
+  modalKutu: {
+    backgroundColor: "#18181B",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: 40,
+    maxHeight: "85%",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
   },
   kategoriListesi: { marginBottom: 20, maxHeight: 300 },
   kategoriSecenek: {
@@ -1007,4 +1201,114 @@ const styles = StyleSheet.create({
   },
   kategoriMetin: { color: "rgba(255,255,255,0.7)", fontSize: 16 },
   kategoriMetinAktif: { color: "#1DB954", fontWeight: "700" },
+  magazaModalZemin: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0,0,0,0.5)",
+  },
+  seffafAlan: { ...StyleSheet.absoluteFillObject },
+  magazaKartIcerik: {
+    backgroundColor: "#18181B",
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    borderTopWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    paddingHorizontal: 25,
+    paddingTop: 10,
+    elevation: 20,
+  },
+  magazaBaslik: {
+    color: "white",
+    fontSize: 22,
+    fontWeight: "800",
+    marginBottom: 20,
+  },
+  magazaFormGrubu: { gap: 10, marginBottom: 24 },
+  magazaEtiket: {
+    color: "rgba(255, 255, 255, 0.45)",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  magazaInputZemin: {
+    backgroundColor: "#0A0A0A",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.12)",
+    height: 61,
+    paddingHorizontal: 18,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  magazaInput: { flex: 1, color: "white", fontSize: 16, fontWeight: "600" },
+  magazaOnaylaButon: {
+    backgroundColor: "#1DB954",
+    height: 56,
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  magazaOnaylaButonPasif: { backgroundColor: "rgba(255, 255, 255, 0.1)" },
+  magazaOnaylaButonMetin: { color: "white", fontSize: 16, fontWeight: "700" },
+
+  silmeModalArkaPlan: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.85)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 24,
+  },
+  silmeModalKutu: {
+    width: "100%",
+    backgroundColor: "#18181B",
+    borderRadius: 24,
+    padding: 24,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255, 107, 107, 0.25)",
+  },
+  silmeModalIkonZemin: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "rgba(255, 107, 107, 0.1)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255, 107, 107, 0.3)",
+  },
+  silmeModalBaslik: {
+    color: "white",
+    fontSize: 20,
+    fontWeight: "800",
+    marginBottom: 8,
+  },
+  silmeModalMesaj: {
+    color: "rgba(255, 255, 255, 0.5)",
+    fontSize: 14,
+    textAlign: "center",
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  silmeModalButonKapsayici: { flexDirection: "row", gap: 12, width: "100%" },
+  silmeModalIptalButon: {
+    flex: 1,
+    height: 50,
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.2)",
+  },
+  silmeModalIptalMetin: { color: "white", fontSize: 15, fontWeight: "600" },
+  silmeModalOnayButon: {
+    flex: 1,
+    height: 50,
+    backgroundColor: "#E53935",
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  silmeModalOnayMetin: { color: "white", fontSize: 15, fontWeight: "700" },
 });

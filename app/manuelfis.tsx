@@ -84,7 +84,6 @@ LocaleConfig.locales["tr"] = {
 };
 LocaleConfig.defaultLocale = "tr";
 
-// 🔴 ÇÖZÜM: YEREL SAATE GÖRE BUGÜNÜN TARİHİNİ BULAN FONKSİYON
 const getYerelMaxTarih = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -272,7 +271,8 @@ export default function ManuelEkleScreen() {
       >
         <View style={styles.ustBar}>
           <TouchableOpacity
-            style={styles.ikonButon}
+            style={[styles.ikonButon, yukleniyor && { opacity: 0.4 }]}
+            disabled={yukleniyor}
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               router.back();
@@ -282,7 +282,8 @@ export default function ManuelEkleScreen() {
           </TouchableOpacity>
           <Text style={styles.sayfaBaslik}>Harcama Ekle</Text>
           <TouchableOpacity
-            style={styles.ikonButon}
+            style={[styles.ikonButon, yukleniyor && { opacity: 0.4 }]}
+            disabled={yukleniyor}
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               router.back();

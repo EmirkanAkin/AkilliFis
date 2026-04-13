@@ -7,6 +7,7 @@ import {
   addDoc,
   collection,
   deleteDoc,
+  doc,
   getDocs,
   query,
   where,
@@ -126,6 +127,7 @@ export default function ProfilScreen() {
 
     if (aktifUid) {
       try {
+        // 1. Fişleri Sil
         const fislerQ = query(
           collection(db, "Fisler"),
           where("kullanici_id", "==", aktifUid),
@@ -133,6 +135,7 @@ export default function ProfilScreen() {
         const fislerSnap = await getDocs(fislerQ);
         for (const doc of fislerSnap.docs) await deleteDoc(doc.ref);
 
+        // 2. Ürünleri Sil
         const urunlerQ = query(
           collection(db, "Urunler"),
           where("kullanici_id", "==", aktifUid),
@@ -140,6 +143,9 @@ export default function ProfilScreen() {
         const urunlerSnap = await getDocs(urunlerQ);
         for (const doc of urunlerSnap.docs) await deleteDoc(doc.ref);
 
+        await deleteDoc(doc(db, "Kullanicilar", aktifUid));
+
+        // 4. Cihaz hafızasını (Zustand) temizle
         setIsim("");
         setButce("0");
 
@@ -147,7 +153,7 @@ export default function ProfilScreen() {
         setSifirlaModalAcik(false);
         setSifirlaniyor(false);
 
-        // 🔴 ÇÖZÜM: Kullanıcıyı uygulamanın en başına (/ilkgiris) yönlendirir
+        // Kullanıcıyı uygulamanın en başına (/ilkgiris) yönlendir
         router.replace("/ilkgiris");
       } catch (error) {
         console.error("Sıfırlama Hatası:", error);

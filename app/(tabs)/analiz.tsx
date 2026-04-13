@@ -21,7 +21,6 @@ import { useStore } from "../../store/useStore";
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
-// 🔴 ÇÖZÜM: UYGULAMANIN ANA KATEGORİ RENKLERİ BURAYA EKLENDİ
 const KATEGORI_RENGI: any = {
   "Sebze/Meyve": "#1DB954",
   Temizlik: "#3B82F6",
@@ -216,7 +215,7 @@ export default function AnalizScreen() {
           maximumFractionDigits: 2,
         }),
         percent: percent,
-        // 🔴 ÇÖZÜM: Renk ataması artık sabit kategori listesinden alınıyor
+
         color: KATEGORI_RENGI[katAd] || "#8B5CF6",
       };
     });

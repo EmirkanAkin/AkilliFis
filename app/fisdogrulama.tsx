@@ -2,8 +2,9 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Keyboard,
   KeyboardAvoidingView,
@@ -14,6 +15,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   View,
 } from "react-native";
 import { Calendar, LocaleConfig } from "react-native-calendars";
@@ -23,7 +25,7 @@ import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
 import { useStore } from "../store/useStore";
 
-// 🔴 ÇÖZÜM: BÜYÜK KATEGORİ BİRLİĞİ (Tüm Uygulamayla %100 Uyumlu)
+// BÜYÜK KATEGORİ BİRLİĞİ
 const KATEGORI_AYARLARI: any = {
   Market: { renk: "#1DB954", ikon: "cart" },
   Kafe: { renk: "#00704A", ikon: "cafe" },
@@ -85,7 +87,6 @@ LocaleConfig.locales["tr"] = {
 };
 LocaleConfig.defaultLocale = "tr";
 
-// YEREL SAATE GÖRE BUGÜNÜ BULMA
 const getYerelMaxTarih = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -95,6 +96,8 @@ export default function FisDogrulamaScreen() {
   const router = useRouter();
   const { imageUri } = useLocalSearchParams();
   const { uid, tempFis, setTempFis } = useStore();
+
+  const [yukleniyor, setYukleniyor] = useState(false);
 
   const [tarihModalAcik, setTarihModalAcik] = useState(false);
 
@@ -111,6 +114,11 @@ export default function FisDogrulamaScreen() {
     "fis" | "geciciUrun" | null
   >(null);
 
+  // MAĞAZA ADI DÜZENLEME MODALI STATE'LERİ
+  const [magazaModalAcik, setMagazaModalAcik] = useState(false);
+  const [geciciMagazaAd, setGeciciMagazaAd] = useState("");
+  const magazaInputRef = useRef<TextInput>(null);
+
   const anlikToplam = tempFis.urunler.reduce(
     (acc, item) => acc + (Number(item.fiyat) || 0),
     0,
@@ -124,7 +132,6 @@ export default function FisDogrulamaScreen() {
     setTarihModalAcik(false);
   };
 
-  // ÜRÜN DÜZENLEME FONKSİYONLARI
   const urunDuzenle = (index: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSecilenUrunIndex(index);
@@ -184,7 +191,6 @@ export default function FisDogrulamaScreen() {
     setUrunModalAcik(false);
   };
 
-  // ORTAK KATEGORİ SEÇİMİ
   const kategoriSec = (secilenKat: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (aktifKategoriSecimi === "fis") {
@@ -197,8 +203,13 @@ export default function FisDogrulamaScreen() {
 
   const harcamayiKaydet = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    setYukleniyor(true);
     const aktifUid = uid || auth.currentUser?.uid;
-    if (!aktifUid) return router.push("/(tabs)");
+
+    if (!aktifUid) {
+      setYukleniyor(false);
+      return router.push("/(tabs)");
+    }
 
     try {
       const fisRef = await addDoc(collection(db, "Fisler"), {
@@ -224,6 +235,8 @@ export default function FisDogrulamaScreen() {
     } catch (e) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       router.push("/(tabs)");
+    } finally {
+      setYukleniyor(false);
     }
   };
 
@@ -231,7 +244,8 @@ export default function FisDogrulamaScreen() {
     <View style={styles.anaEkran}>
       <View style={styles.ustBar}>
         <TouchableOpacity
-          style={styles.geriButon}
+          style={[styles.geriButon, yukleniyor && { opacity: 0.4 }]}
+          disabled={yukleniyor}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             router.back();
@@ -260,7 +274,6 @@ export default function FisDogrulamaScreen() {
         </View>
 
         <View style={styles.anaKart}>
-          {/* FİŞ GENEL KATEGORİSİNİ DÜZENLEME ALANI */}
           <TouchableOpacity
             activeOpacity={0.7}
             onPress={() => {
@@ -324,10 +337,13 @@ export default function FisDogrulamaScreen() {
                     {tempFis.magazaAdi || "Bilinmiyor"}
                   </Text>
                 </View>
+
                 <TouchableOpacity
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    router.push("/MagazaDuzenleme");
+                    setGeciciMagazaAd(tempFis.magazaAdi);
+                    setMagazaModalAcik(true);
+                    setTimeout(() => magazaInputRef.current?.focus(), 100);
                   }}
                 >
                   <Ionicons name="create-outline" size={18} color="#1DB954" />
@@ -420,13 +436,18 @@ export default function FisDogrulamaScreen() {
         </View>
 
         <TouchableOpacity
-          style={styles.kaydetButon}
+          style={[styles.kaydetButon, yukleniyor && styles.kaydetButonPasif]}
           activeOpacity={0.8}
           onPress={harcamayiKaydet}
+          disabled={yukleniyor}
         >
-          <Text style={styles.kaydetButonMetin}>
-            Harcamayı Onayla ve Kaydet
-          </Text>
+          {yukleniyor ? (
+            <ActivityIndicator color="white" />
+          ) : (
+            <Text style={styles.kaydetButonMetin}>
+              Harcamayı Onayla ve Kaydet
+            </Text>
+          )}
         </TouchableOpacity>
       </ScrollView>
 
@@ -671,6 +692,72 @@ export default function FisDogrulamaScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* MAĞAZA ADI DÜZENLEME MODALI */}
+      <Modal
+        visible={magazaModalAcik}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setMagazaModalAcik(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.magazaModalZemin}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
+          <TouchableWithoutFeedback
+            onPress={() => {
+              Keyboard.dismiss();
+              setMagazaModalAcik(false);
+            }}
+          >
+            <View style={styles.seffafAlan} />
+          </TouchableWithoutFeedback>
+
+          <View style={styles.magazaKartIcerik}>
+            <View style={styles.tutuamacKapsayici}>
+              <View style={styles.tutuamac} />
+            </View>
+            <Text style={styles.magazaBaslik}>Mağaza Düzenle</Text>
+            <View style={styles.magazaFormGrubu}>
+              <Text style={styles.magazaEtiket}>Mağaza Adı</Text>
+              <View style={styles.magazaInputZemin}>
+                <Ionicons
+                  name="storefront-outline"
+                  size={18}
+                  color="#1DB954"
+                  style={{ marginRight: 10 }}
+                />
+                <TextInput
+                  ref={magazaInputRef}
+                  style={styles.magazaInput}
+                  placeholder="Mağaza adını girin"
+                  placeholderTextColor="rgba(255, 255, 255, 0.50)"
+                  value={geciciMagazaAd}
+                  onChangeText={setGeciciMagazaAd}
+                  cursorColor="#1DB954"
+                />
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={[
+                styles.magazaOnaylaButon,
+                geciciMagazaAd.trim() === "" && styles.magazaOnaylaButonPasif,
+              ]}
+              onPress={() => {
+                if (!geciciMagazaAd.trim()) return;
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                setTempFis({ ...tempFis, magazaAdi: geciciMagazaAd.trim() });
+                setMagazaModalAcik(false);
+              }}
+              disabled={geciciMagazaAd.trim() === ""}
+            >
+              <Text style={styles.magazaOnaylaButonMetin}>Güncelle</Text>
+            </TouchableOpacity>
+            <View style={{ height: 30 }} />
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -833,6 +920,11 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   kaydetButonMetin: { color: "white", fontSize: 15, fontWeight: "700" },
+  kaydetButonPasif: {
+    backgroundColor: "rgba(29, 185, 84, 0.15)",
+    elevation: 0,
+    shadowOpacity: 0,
+  },
 
   takvimZemin: {
     flex: 1,
@@ -945,4 +1037,64 @@ const styles = StyleSheet.create({
   },
   kategoriMetin: { color: "rgba(255,255,255,0.7)", fontSize: 16 },
   kategoriMetinAktif: { color: "#1DB954", fontWeight: "700" },
+
+  magazaModalZemin: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0,0,0,0.5)",
+  },
+  seffafAlan: { ...StyleSheet.absoluteFillObject },
+  magazaKartIcerik: {
+    backgroundColor: "#18181B",
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    borderTopWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    paddingHorizontal: 25,
+    paddingTop: 10,
+    elevation: 20,
+  },
+  tutuamacKapsayici: {
+    alignItems: "center",
+    marginBottom: 16,
+    paddingVertical: 10,
+  },
+  tutuamac: {
+    width: 40,
+    height: 4,
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    borderRadius: 2,
+  },
+  magazaBaslik: {
+    color: "white",
+    fontSize: 22,
+    fontWeight: "800",
+    marginBottom: 20,
+  },
+  magazaFormGrubu: { gap: 10, marginBottom: 24 },
+  magazaEtiket: {
+    color: "rgba(255, 255, 255, 0.45)",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  magazaInputZemin: {
+    backgroundColor: "#0A0A0A",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.12)",
+    height: 61,
+    paddingHorizontal: 18,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  magazaInput: { flex: 1, color: "white", fontSize: 16, fontWeight: "600" },
+  magazaOnaylaButon: {
+    backgroundColor: "#1DB954",
+    height: 56,
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  magazaOnaylaButonPasif: { backgroundColor: "rgba(255, 255, 255, 0.1)" },
+  magazaOnaylaButonMetin: { color: "white", fontSize: 16, fontWeight: "700" },
 });

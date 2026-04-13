@@ -92,7 +92,6 @@ export default function KameraScreen() {
         else secilenModel = acikModeller[0];
       }
 
-      // 🔴 DÜZELTME BURADA: PROMPT GÜNCELLENDİ (Detaylı Ürün Kategorileri Eklendi)
       const prompt = `
         Sen uzman bir fiş ve fatura okuma yapay zekasısın.
         DİKKAT: Eğer gönderilen görsel bir fiş, fatura veya adisyon DEĞİLSE (Örn: manzara, insan, boş bir masa resmi vb.), BANA SADECE ŞU JSON'U DÖNDÜR:

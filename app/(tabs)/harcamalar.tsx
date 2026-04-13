@@ -3,11 +3,18 @@ import { useFocusEffect } from "@react-navigation/native";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { collection, getDocs, query, where } from "firebase/firestore";
-import React, { useCallback, useState } from "react";
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDocs,
+  query,
+  where,
+} from "firebase/firestore";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Platform,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -18,7 +25,7 @@ import {
 import { auth, db } from "../../firebaseConfig";
 import { useStore } from "../../store/useStore";
 
-// TARİH FORMATLAMA ("DD.MM.YYYY" -> Date)
+// TARİH FORMATLAYICI
 const parseTarih = (tarihStr: string) => {
   if (!tarihStr) return new Date();
   const parts = tarihStr.split(".");
@@ -28,7 +35,6 @@ const parseTarih = (tarihStr: string) => {
   return new Date();
 };
 
-// 19.10.2023 -> "EKİM 2023" ve "19 Eki 2023" formatına çevirici
 const formatlaTarih = (tarihStr: string) => {
   if (!tarihStr) return { ayYil: "BİLİNMEYEN TARİH", gunAyYil: "" };
   const parts = tarihStr.split(".");
@@ -73,7 +79,7 @@ const formatlaTarih = (tarihStr: string) => {
   };
 };
 
-// Markaya Göre Renk Atama
+// MARKA RENKLENDİRİCİ
 const getMarkaRengi = (markaAd: string) => {
   if (!markaAd) return "#1DB954";
   const m = markaAd.toLowerCase();
@@ -89,14 +95,7 @@ const getMarkaRengi = (markaAd: string) => {
     return "#5D00D2";
   if (m.includes("starbucks") || m.includes("kahve")) return "#00704A";
   if (m.includes("migros") || m.includes("spotify")) return "#1DB954";
-  return "#1DB954"; // Varsayılan renk
-};
-
-const formatMoney = (amount: number) => {
-  return amount.toLocaleString("tr-TR", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  return "#1DB954";
 };
 
 export default function HarcamalarScreen() {
@@ -105,9 +104,28 @@ export default function HarcamalarScreen() {
 
   const [harcamalar, setHarcamalar] = useState<any[]>([]);
   const [yukleniyor, setYukleniyor] = useState(true);
-  const [aktifFiltre, setAktifFiltre] = useState("Tümü");
 
-  // FİREBASE BAĞLANTISI (TARİHE GÖRE SIRALAMALI)
+  // FİLTRELEME VE ARAMA
+  const [aktifFiltre, setAktifFiltre] = useState("Tümü");
+  const [aramaMetni, setAramaMetni] = useState("");
+
+  // SİLME İŞLEMİ İÇİN STATELER
+  const [silmeModalAcik, setSilmeModalAcik] = useState(false);
+  const [silinecekFisId, setSilinecekFisId] = useState<string | null>(null);
+  const [siliyor, setSiliyor] = useState(false);
+
+  // Filtrelenen kategorideki son fiş silinirse otomatik olarak "Tümü"ne atar.
+  useEffect(() => {
+    if (aktifFiltre !== "Tümü") {
+      const kategoriHalaVarMi = harcamalar.some(
+        (h) => (h.kategori || "Diğer") === aktifFiltre,
+      );
+      if (!kategoriHalaVarMi) {
+        setAktifFiltre("Tümü");
+      }
+    }
+  }, [harcamalar, aktifFiltre]);
+
   const veriGetir = async () => {
     const aktifUid = uid || auth.currentUser?.uid;
     if (!aktifUid) return setYukleniyor(false);
@@ -123,15 +141,31 @@ export default function HarcamalarScreen() {
         ...doc.data(),
       }));
 
-      // 🔴 ÇÖZÜM: a ve b'ye "any" dedik, TS hatasını çözdük.
-      const siraliVeriler = veriler.sort(
-        (a: any, b: any) =>
-          parseTarih(b.tarih).getTime() - parseTarih(a.tarih).getTime(),
-      );
+      const siraliVeriler = veriler.sort((a: any, b: any) => {
+        // 1. Önce gün/ay/yıl formatındaki string tarihleri sayısallaştırıp karşılaştırıyoruz.
+        const dateA = parseTarih(a.tarih).getTime();
+        const dateB = parseTarih(b.tarih).getTime();
+
+        // Eğer tarihler farklıysa, normal tarihe göre sırala (Yeni tarih üstte)
+        if (dateA !== dateB) {
+          return dateB - dateA;
+        }
+
+        // 2. EĞER TARİHLER AYNIYSA (İkisi de bugün girilmişse):
+        // Firebase'in oluşturduğu milisaniyelik timestamp'e bak ve en son ekleneni üste koy
+        const timeA = a.olusturulma_tarihi?.toMillis
+          ? a.olusturulma_tarihi.toMillis()
+          : 0;
+        const timeB = b.olusturulma_tarihi?.toMillis
+          ? b.olusturulma_tarihi.toMillis()
+          : 0;
+
+        return timeB - timeA;
+      });
 
       setHarcamalar(siraliVeriler);
     } catch (error) {
-      console.error("Harcamalar çekilemedi:", error);
+      console.error(error);
     } finally {
       setYukleniyor(false);
     }
@@ -144,7 +178,35 @@ export default function HarcamalarScreen() {
     }, []),
   );
 
-  // KATEGORİ SAYILARINI HESAPLA (Dinamik Filtreler)
+  const fisiSil = async () => {
+    if (!silinecekFisId) return;
+    setSiliyor(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    try {
+      await deleteDoc(doc(db, "Fisler", silinecekFisId));
+      const q = query(
+        collection(db, "Urunler"),
+        where("fis_id", "==", silinecekFisId),
+      );
+      const snap = await getDocs(q);
+      const silmeIslemleri = snap.docs.map((d) =>
+        deleteDoc(doc(db, "Urunler", d.id)),
+      );
+      await Promise.all(silmeIslemleri);
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setHarcamalar((prev) => prev.filter((h) => h.id !== silinecekFisId));
+    } catch (error) {
+      console.error(error);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setSiliyor(false);
+      setSilmeModalAcik(false);
+      setSilinecekFisId(null);
+    }
+  };
+
+  // KATEGORİ BAZLI FİLTRELEME MANTIĞI
   const kategoriSayilari = harcamalar.reduce(
     (acc, h) => {
       const kat = h.kategori || "Diğer";
@@ -154,15 +216,23 @@ export default function HarcamalarScreen() {
     {} as Record<string, number>,
   );
 
-  const filtreListesi = ["Tümü", ...Object.keys(kategoriSayilari)];
+  const filtreListesi = ["Tümü", ...Object.keys(kategoriSayilari).sort()];
 
-  // SEÇİLİ FİLTREYE GÖRE VERİLERİ SÜZ VE AYLARA GÖRE GRUPLA
-  const filtrelenmisHarcamalar =
+  let filtrelenmisHarcamalar =
     aktifFiltre === "Tümü"
       ? harcamalar
       : harcamalar.filter((h) => (h.kategori || "Diğer") === aktifFiltre);
 
-  // GRUPLAMA MANTIĞI
+  // ARAMA MANTIĞI
+  if (aramaMetni.trim() !== "") {
+    filtrelenmisHarcamalar = filtrelenmisHarcamalar.filter(
+      (h) =>
+        h.magaza_adi?.toLowerCase().includes(aramaMetni.toLowerCase()) ||
+        h.kategori?.toLowerCase().includes(aramaMetni.toLowerCase()),
+    );
+  }
+
+  // AYLARA GÖRE GRUPLAMA
   const gruplar: { ayYil: string; toplam: number; veriler: any[] }[] = [];
   filtrelenmisHarcamalar.forEach((h) => {
     const { ayYil, gunAyYil } = formatlaTarih(h.tarih);
@@ -174,11 +244,7 @@ export default function HarcamalarScreen() {
       mevcutGrup.veriler.push(h);
       mevcutGrup.toplam += tutarNum;
     } else {
-      gruplar.push({
-        ayYil: ayYil,
-        toplam: tutarNum,
-        veriler: [h],
-      });
+      gruplar.push({ ayYil: ayYil, toplam: tutarNum, veriler: [h] });
     }
   });
 
@@ -195,9 +261,6 @@ export default function HarcamalarScreen() {
     );
   }
 
-  // ==========================================
-  // 🔴 1. SENARYO: SEPET BOŞSA
-  // ==========================================
   if (harcamalar.length === 0) {
     return (
       <View style={styles.anaEkranBos}>
@@ -210,22 +273,15 @@ export default function HarcamalarScreen() {
             <View style={styles.devIkonOrtaHalkaBos}>
               <View style={styles.devIkonIcDaireBos}>
                 <Ionicons name="wallet-outline" size={32} color="#1DB954" />
-                <View style={styles.ikonKucukBildirimBos}>
-                  <Ionicons name="scan-outline" size={14} color="#0A0A0A" />
-                </View>
               </View>
             </View>
-            <View style={styles.dekoratifNoktaSagBos} />
-            <View style={styles.dekoratifNoktaSolBos} />
           </View>
-
           <View style={styles.metinKapsayiciBos}>
             <Text style={styles.baslikMetniBos}>Henüz hiç fiş taranmamış</Text>
             <Text style={styles.aciklamaMetniBos}>
-              Harcamalarını takip etmek için ilk fişini tara
+              Harcamalarını takip etmek için ilk fişini tara veya manuel ekle.
             </Text>
           </View>
-
           <View style={styles.butonlarKapsayiciBos}>
             <TouchableOpacity
               activeOpacity={0.8}
@@ -241,206 +297,247 @@ export default function HarcamalarScreen() {
                 <Text style={styles.anaButonMetniBos}>Fiş Tara</Text>
               </LinearGradient>
             </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.manuelEkleKapsayiciBos}
-              activeOpacity={0.6}
-              onPress={() => router.push("/manuelfis")}
-            >
-              <Text style={styles.manuelEkleMetniBos}>
-                veya manuel olarak harcama ekle
-              </Text>
-            </TouchableOpacity>
           </View>
         </View>
       </View>
     );
   }
 
-  // ==========================================
-  // 🟢 2. SENARYO: SEPET DOLUYSA
-  // ==========================================
   return (
-    <View style={styles.anaEkran}>
-      {/* ÜST BAŞLIK BÖLÜMÜ */}
-      <View style={{ paddingHorizontal: 20, marginBottom: 20 }}>
-        <Text style={styles.ustBaslikBos}>KAYITLAR</Text>
-        <View style={styles.headerKutusu}>
-          <Text style={styles.sayfaBaslik}>Tüm Harcamalar</Text>
-          <TouchableOpacity style={styles.filtreButonu} activeOpacity={0.6}>
-            <Ionicons
-              name="options-outline"
-              size={20}
-              color="rgba(255,255,255,0.7)"
-            />
-          </TouchableOpacity>
+    <View style={{ flex: 1 }}>
+      <View style={styles.anaEkran}>
+        <View style={{ paddingHorizontal: 20, marginBottom: 15 }}>
+          <Text style={styles.ustBaslikBos}>KAYITLAR</Text>
+          <View style={styles.headerKutusu}>
+            <Text style={styles.sayfaBaslik}>Tüm Harcamalar</Text>
+          </View>
         </View>
-      </View>
 
-      {/* ARAMA KUTUSU */}
-      <View style={styles.aramaKutusuKapsayici}>
-        <Ionicons
-          name="search-outline"
-          size={18}
-          color="rgba(255, 255, 255, 0.4)"
-          style={styles.aramaIkoni}
-        />
-        <TextInput
-          style={styles.aramaGirdisi}
-          placeholder="Mağaza veya Kategori Ara..."
-          placeholderTextColor="rgba(255, 255, 255, 0.4)"
-          selectionColor="#1DB954"
-        />
-      </View>
+        <View style={styles.aramaKutusuKapsayici}>
+          <Ionicons
+            name="search-outline"
+            size={18}
+            color="rgba(255, 255, 255, 0.4)"
+            style={styles.aramaIkoni}
+          />
+          <TextInput
+            style={styles.aramaGirdisi}
+            placeholder="Mağaza veya kategori ara..."
+            placeholderTextColor="rgba(255, 255, 255, 0.3)"
+            selectionColor="#1DB954"
+            cursorColor="#1DB954"
+            value={aramaMetni}
+            onChangeText={setAramaMetni}
+          />
+          {aramaMetni.length > 0 && (
+            <TouchableOpacity onPress={() => setAramaMetni("")}>
+              <Ionicons
+                name="close-circle"
+                size={16}
+                color="rgba(255, 255, 255, 0.3)"
+              />
+            </TouchableOpacity>
+          )}
+        </View>
 
-      {/* KATEGORİ FİLTRELERİ */}
-      <View style={styles.kategoriKapsayici}>
-        <ScrollView
-          horizontal={true}
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ gap: 8, paddingHorizontal: 20 }}
-        >
-          {filtreListesi.map((kat) => {
-            const isAktif = aktifFiltre === kat;
-            const adet =
-              kat === "Tümü" ? harcamalar.length : kategoriSayilari[kat];
-
-            return (
-              <TouchableOpacity
-                key={kat}
-                style={[styles.filtreHap, isAktif && styles.filtreHapAktif]}
-                activeOpacity={0.8}
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setAktifFiltre(kat);
-                }}
-              >
-                <Text
-                  style={[
-                    styles.filtreMetin,
-                    isAktif && styles.filtreMetinAktif,
-                  ]}
-                >
-                  {kat}
-                </Text>
-                <View
-                  style={[
-                    styles.filtreRozet,
-                    isAktif && styles.filtreRozetAktif,
-                  ]}
+        <View style={styles.kategoriKapsayici}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: 8, paddingHorizontal: 20 }}
+          >
+            {filtreListesi.map((kat) => {
+              const isAktif = aktifFiltre === kat;
+              const adet =
+                kat === "Tümü" ? harcamalar.length : kategoriSayilari[kat];
+              return (
+                <TouchableOpacity
+                  key={kat}
+                  style={[styles.filtreHap, isAktif && styles.filtreHapAktif]}
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setAktifFiltre(kat);
+                  }}
                 >
                   <Text
                     style={[
-                      styles.filtreRozetMetin,
-                      isAktif && styles.filtreRozetMetinAktif,
+                      styles.filtreMetin,
+                      isAktif && styles.filtreMetinAktif,
                     ]}
                   >
-                    {adet}
+                    {kat}
                   </Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>
-
-      {/* ANA HARCAMA LİSTESİ (AYLARA GÖRE GRUPLANMIŞ) */}
-      <ScrollView
-        style={styles.listeAlani}
-        showsVerticalScrollIndicator={false}
-      >
-        {gruplar.map((grup, index) => (
-          <View key={index} style={{ marginBottom: 16 }}>
-            {/* DİNAMİK AY/YIL BAŞLIĞI */}
-            <View style={styles.tarihSatiri}>
-              <View style={styles.tarihSolGrup}>
-                <View style={styles.tarihCizgisi} />
-                <Text style={styles.tarihBaslik}>{grup.ayYil}</Text>
-              </View>
-              <View style={styles.tarihSagGrup}>
-                <Ionicons
-                  name="trending-down-outline"
-                  size={12}
-                  color="rgba(255, 107, 107, 0.6)"
-                />
-                <Text style={styles.tarihToplamTutar}>
-                  {formatMoney(grup.toplam)} TL
-                </Text>
-              </View>
-            </View>
-
-            {/* O AYA AİT FİŞLER */}
-            {grup.veriler.map((item: any) => {
-              const markaRengi = getMarkaRengi(item.magaza_adi);
-              return (
-                <TouchableOpacity
-                  key={item.id}
-                  style={styles.harcamaOgesi}
-                  activeOpacity={0.7}
-                  onPress={() =>
-                    router.push({
-                      pathname: "/urundetay",
-                      params: { id: item.id },
-                    })
-                  }
-                >
                   <View
                     style={[
-                      styles.ikonZemini,
-                      { backgroundColor: markaRengi },
-                      Platform.select({
-                        ios: {
-                          shadowColor: markaRengi,
-                          shadowOffset: { width: 0, height: 3 },
-                          shadowOpacity: 0.25,
-                          shadowRadius: 10,
-                        },
-                        android: { elevation: 6, shadowColor: markaRengi },
-                      }),
+                      styles.filtreRozet,
+                      isAktif && styles.filtreRozetAktif,
                     ]}
                   >
-                    <Text style={styles.ikonHarf}>
-                      {item.magaza_adi?.[0]?.toUpperCase() || "?"}
+                    <Text
+                      style={[
+                        styles.filtreRozetMetin,
+                        isAktif && styles.filtreRozetMetinAktif,
+                      ]}
+                    >
+                      {adet}
                     </Text>
-                  </View>
-                  <View style={styles.harcamaBilgi}>
-                    <Text style={styles.harcamaAd} numberOfLines={1}>
-                      {item.magaza_adi}
-                    </Text>
-                    <View style={styles.kategoriVeTarihKutusu}>
-                      <View style={styles.kategoriKutucuk}>
-                        <Text style={styles.kategoriKutucukMetin}>
-                          {item.kategori || "Diğer"}
-                        </Text>
-                      </View>
-                      <Text style={styles.harcamaTarihMetni}>
-                        {item.gosterimTarihi}
-                      </Text>
-                    </View>
-                  </View>
-                  <View style={styles.fiyatVeOkKapsayici}>
-                    <Text style={styles.harcamaTutar}>
-                      -{formatMoney(item.toplam_tutar)} TL
-                    </Text>
-                    <Ionicons
-                      name="chevron-forward"
-                      size={14}
-                      color="rgba(255,255,255,0.20)"
-                    />
                   </View>
                 </TouchableOpacity>
               );
             })}
-          </View>
-        ))}
+          </ScrollView>
+        </View>
 
-        <View style={{ height: 40 }} />
-      </ScrollView>
+        <ScrollView
+          style={styles.listeAlani}
+          showsVerticalScrollIndicator={false}
+        >
+          {gruplar.length === 0 && (
+            <Text
+              style={{
+                color: "rgba(255,255,255,0.4)",
+                textAlign: "center",
+                marginTop: 40,
+              }}
+            >
+              Bu aramaya uygun kayıt bulunamadı.
+            </Text>
+          )}
+
+          {gruplar.map((grup, index) => (
+            <View key={index} style={{ marginBottom: 20 }}>
+              <View style={styles.tarihSatiri}>
+                <View style={styles.tarihSolGrup}>
+                  <View style={styles.tarihCizgisi} />
+                  <Text style={styles.tarihBaslik}>{grup.ayYil}</Text>
+                </View>
+                <View style={styles.tarihSagGrup}>
+                  <Ionicons
+                    name="trending-down-outline"
+                    size={12}
+                    color="rgba(255, 107, 107, 0.6)"
+                  />
+                  <Text style={styles.tarihToplamTutar}>
+                    {grup.toplam.toLocaleString("tr-TR", {
+                      minimumFractionDigits: 2,
+                    })}{" "}
+                    TL
+                  </Text>
+                </View>
+              </View>
+
+              {grup.veriler.map((item: any) => {
+                const markaRengi = getMarkaRengi(item.magaza_adi);
+                return (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={styles.harcamaOgesi}
+                    activeOpacity={0.7}
+                    onPress={() =>
+                      router.push({
+                        pathname: "/urundetay",
+                        params: { id: item.id },
+                      })
+                    }
+                    onLongPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                      setSilinecekFisId(item.id);
+                      setSilmeModalAcik(true);
+                    }}
+                  >
+                    <View
+                      style={[
+                        styles.ikonZemini,
+                        { backgroundColor: markaRengi },
+                      ]}
+                    >
+                      <Text style={styles.ikonHarf}>
+                        {item.magaza_adi?.[0]?.toUpperCase() || "?"}
+                      </Text>
+                    </View>
+                    <View style={styles.harcamaBilgi}>
+                      <Text style={styles.harcamaAd} numberOfLines={1}>
+                        {item.magaza_adi}
+                      </Text>
+                      <View style={styles.kategoriVeTarihKutusu}>
+                        <View style={styles.kategoriKutucuk}>
+                          <Text style={styles.kategoriKutucukMetin}>
+                            {item.kategori || "Diğer"}
+                          </Text>
+                        </View>
+                        <Text style={styles.harcamaTarihMetni}>
+                          {item.gosterimTarihi}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.fiyatVeOkKapsayici}>
+                      <Text style={styles.harcamaTutar}>
+                        -
+                        {Number(item.toplam_tutar).toLocaleString("tr-TR", {
+                          minimumFractionDigits: 2,
+                        })}{" "}
+                        TL
+                      </Text>
+                      <Ionicons
+                        name="chevron-forward"
+                        size={14}
+                        color="rgba(255,255,255,0.20)"
+                      />
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          ))}
+          <View style={{ height: 40 }} />
+        </ScrollView>
+      </View>
+
+      <Modal visible={silmeModalAcik} transparent={true} animationType="fade">
+        <View style={styles.modalArkaPlan}>
+          <View style={styles.modalKutu}>
+            <View style={styles.modalIkonZemin}>
+              <Ionicons name="trash-outline" size={32} color="#FF6B6B" />
+            </View>
+            <Text style={styles.modalBaslik}>Fişi Sil</Text>
+            <Text style={styles.modalMesaj}>
+              Bu fişi tamamen silmek istediğinize emin misiniz? İşlem geri
+              alınamaz.
+            </Text>
+
+            <View style={styles.modalButonKapsayici}>
+              <TouchableOpacity
+                style={styles.modalIptalButon}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setSilmeModalAcik(false);
+                  setSilinecekFisId(null);
+                }}
+                disabled={siliyor}
+              >
+                <Text style={styles.modalIptalMetin}>İptal</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.modalOnayButon}
+                onPress={fisiSil}
+                disabled={siliyor}
+              >
+                {siliyor ? (
+                  <ActivityIndicator size="small" color="white" />
+                ) : (
+                  <Text style={styles.modalOnayMetin}>Evet, Sil</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
 
-// STİLLER
 const styles = StyleSheet.create({
   anaEkranBos: {
     flex: 1,
@@ -490,40 +587,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  ikonKucukBildirimBos: {
-    position: "absolute",
-    top: -8,
-    right: -12,
-    backgroundColor: "#1DB954",
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: "#1DB954",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  dekoratifNoktaSagBos: {
-    position: "absolute",
-    top: 10,
-    right: -2,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "rgba(29, 185, 84, 0.30)",
-  },
-  dekoratifNoktaSolBos: {
-    position: "absolute",
-    bottom: 20,
-    left: -8,
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "rgba(29, 185, 84, 0.20)",
-  },
   metinKapsayiciBos: { alignItems: "center", gap: 12, marginBottom: 40 },
   baslikMetniBos: { color: "white", fontSize: 20, fontWeight: "700" },
   aciklamaMetniBos: {
@@ -548,24 +611,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     gap: 8,
-    shadowColor: "#1DB954",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 24,
-    elevation: 8,
   },
-  anaButonMetniBos: {
-    color: "white",
-    fontSize: 15,
-    fontWeight: "700",
-    letterSpacing: 0.3,
-  },
-  manuelEkleKapsayiciBos: { paddingVertical: 8 },
-  manuelEkleMetniBos: {
-    color: "rgba(255, 255, 255, 0.25)",
-    fontSize: 12,
-    fontWeight: "400",
-  },
+  anaButonMetniBos: { color: "white", fontSize: 15, fontWeight: "700" },
 
   anaEkran: { flex: 1, backgroundColor: "#121212", paddingTop: 60 },
   headerKutusu: {
@@ -574,36 +621,28 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   sayfaBaslik: { color: "white", fontSize: 22, fontWeight: "800" },
-  filtreButonu: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
-  },
+
   aramaKutusuKapsayici: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "rgba(255, 255, 255, 0.05)",
     marginHorizontal: 20,
-    marginBottom: 20,
+    marginBottom: 16,
     paddingHorizontal: 14,
-    height: 44,
-    borderRadius: 14,
+    height: 46,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.08)",
   },
   aramaIkoni: { marginRight: 8 },
-  aramaGirdisi: { flex: 1, color: "white", fontSize: 13, fontWeight: "400" },
-  kategoriKapsayici: { marginBottom: 20, height: 28 },
+  aramaGirdisi: { flex: 1, color: "white", fontSize: 14, fontWeight: "500" },
+
+  kategoriKapsayici: { marginBottom: 20, height: 32 },
   filtreHap: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 12,
+    gap: 6,
+    paddingHorizontal: 14,
     paddingVertical: 6,
     borderRadius: 20,
     backgroundColor: "rgba(255, 255, 255, 0.05)",
@@ -615,79 +654,81 @@ const styles = StyleSheet.create({
     borderColor: "rgba(29, 185, 84, 0.35)",
   },
   filtreMetin: {
-    color: "rgba(255, 255, 255, 0.5)",
-    fontSize: 11,
-    fontWeight: "400",
+    color: "rgba(255, 255, 255, 0.6)",
+    fontSize: 12,
+    fontWeight: "500",
   },
-  filtreMetinAktif: { color: "#1DB954", fontWeight: "600" },
+  filtreMetinAktif: { color: "#1DB954", fontWeight: "700" },
   filtreRozet: {
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 6,
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
     justifyContent: "center",
     alignItems: "center",
   },
   filtreRozetAktif: { backgroundColor: "rgba(29, 185, 84, 0.20)" },
   filtreRozetMetin: {
-    color: "rgba(255, 255, 255, 0.3)",
+    color: "rgba(255, 255, 255, 0.5)",
     fontSize: 10,
-    fontWeight: "400",
+    fontWeight: "600",
   },
   filtreRozetMetinAktif: { color: "#1DB954" },
+
   listeAlani: { paddingHorizontal: 20 },
   tarihSatiri: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginTop: 10,
-    marginBottom: 10,
+    marginBottom: 12,
     paddingHorizontal: 4,
   },
   tarihSolGrup: { flexDirection: "row", alignItems: "center" },
   tarihCizgisi: {
     width: 4,
-    height: 14,
+    height: 16,
     backgroundColor: "#1DB954",
     borderRadius: 2,
     marginRight: 8,
   },
   tarihBaslik: {
     color: "rgba(255, 255, 255, 0.50)",
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "700",
     letterSpacing: 1.5,
   },
   tarihSagGrup: { flexDirection: "row", alignItems: "center", gap: 4 },
   tarihToplamTutar: {
     color: "rgba(255, 255, 255, 0.4)",
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "600",
   },
+
   harcamaOgesi: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "rgba(255, 255, 255, 0.04)",
-    paddingHorizontal: 13,
-    paddingVertical: 12,
-    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.06)",
-    marginBottom: 8,
-    height: 64,
+    marginBottom: 10,
+    minHeight: 68,
   },
   ikonZemini: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     justifyContent: "center",
     alignItems: "center",
   },
-  ikonHarf: { color: "white", fontSize: 14, fontWeight: "800" },
+  ikonHarf: { color: "white", fontSize: 16, fontWeight: "800" },
   harcamaBilgi: { flex: 1, marginLeft: 12, justifyContent: "center" },
   harcamaAd: {
     color: "white",
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "600",
     marginBottom: 4,
   },
@@ -695,23 +736,85 @@ const styles = StyleSheet.create({
   kategoriKutucuk: {
     backgroundColor: "rgba(255, 255, 255, 0.06)",
     paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 5,
+    paddingVertical: 2,
+    borderRadius: 6,
   },
   kategoriKutucukMetin: {
-    color: "rgba(255, 255, 255, 0.4)",
+    color: "rgba(255, 255, 255, 0.5)",
     fontSize: 10,
-    fontWeight: "500",
+    fontWeight: "600",
   },
   harcamaTarihMetni: {
     color: "rgba(255, 255, 255, 0.3)",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: "500",
   },
-  fiyatVeOkKapsayici: { flexDirection: "row", alignItems: "center", gap: 4 },
+  fiyatVeOkKapsayici: { flexDirection: "row", alignItems: "center", gap: 6 },
   harcamaTutar: {
     color: "rgba(255, 107, 107, 0.90)",
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "700",
   },
+
+  modalArkaPlan: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.85)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 24,
+  },
+  modalKutu: {
+    width: "100%",
+    backgroundColor: "#18181B",
+    borderRadius: 24,
+    padding: 24,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255, 107, 107, 0.25)",
+  },
+  modalIkonZemin: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "rgba(255, 107, 107, 0.1)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255, 107, 107, 0.3)",
+  },
+  modalBaslik: {
+    color: "white",
+    fontSize: 20,
+    fontWeight: "800",
+    marginBottom: 8,
+  },
+  modalMesaj: {
+    color: "rgba(255, 255, 255, 0.5)",
+    fontSize: 14,
+    textAlign: "center",
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  modalButonKapsayici: { flexDirection: "row", gap: 12, width: "100%" },
+  modalIptalButon: {
+    flex: 1,
+    height: 50,
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.2)",
+  },
+  modalIptalMetin: { color: "white", fontSize: 15, fontWeight: "600" },
+  modalOnayButon: {
+    flex: 1,
+    height: 50,
+    backgroundColor: "#E53935",
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalOnayMetin: { color: "white", fontSize: 15, fontWeight: "700" },
 });

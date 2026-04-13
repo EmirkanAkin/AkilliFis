@@ -3,11 +3,19 @@ import { useFocusEffect } from "@react-navigation/native";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDocs,
+  onSnapshot,
+  query,
+  where,
+} from "firebase/firestore";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Platform,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,7 +25,6 @@ import {
 import { auth, db } from "../../firebaseConfig";
 import { useStore } from "../../store/useStore";
 
-// 1. TARİH FORMATLAMA ("DD.MM.YYYY" -> Date)
 const parseTarih = (tarihStr: string) => {
   if (!tarihStr) return new Date();
   const parts = tarihStr.split(".");
@@ -27,7 +34,6 @@ const parseTarih = (tarihStr: string) => {
   return new Date();
 };
 
-// 2. KISA TARİH FORMATI (24 Ekim)
 const kisaTarihFormati = (tarihStr: string) => {
   if (!tarihStr) return "";
   const dateObj = parseTarih(tarihStr);
@@ -40,7 +46,6 @@ const kisaTarihFormati = (tarihStr: string) => {
   return tarihStr;
 };
 
-// 3. MARKAYA GÖRE RENK ATAMA (MADDE 2)
 const getMarkaRengi = (markaAd: string) => {
   if (!markaAd) return "#1DB954";
   const m = markaAd.toLowerCase();
@@ -67,56 +72,29 @@ export default function HomeScreen() {
   const [yukleniyor, setYukleniyor] = useState(true);
   const [harcamalar, setHarcamalar] = useState<any[]>([]);
 
-  // BÜTÇE VE HARCAMA HESAPLAMALARI (DÜZELTİLDİ)
+  // SİLME İŞLEMİ İÇİN STATELER
+  const [silmeModalAcik, setSilmeModalAcik] = useState(false);
+  const [silinecekFisId, setSilinecekFisId] = useState<string | null>(null);
+  const [siliyor, setSiliyor] = useState(false);
+
   const simdi = new Date();
   const mevcutAy = simdi.getMonth();
   const mevcutYil = simdi.getFullYear();
 
   let buAyHarcama = 0;
-  let gecenAyHarcama = 0;
 
   harcamalar.forEach((h) => {
-    // 🔴 ÇÖZÜM: Artık olusturulma_tarihi'ne DEĞİL, fişin üstündeki asıl tarihe bakıyor
     const dateObj = parseTarih(h.tarih);
     const hAy = dateObj.getMonth();
     const hYil = dateObj.getFullYear();
 
     if (hAy === mevcutAy && hYil === mevcutYil) {
       buAyHarcama += Number(h.toplam_tutar) || 0;
-    } else if (
-      (mevcutAy === 0 && hAy === 11 && hYil === mevcutYil - 1) ||
-      (mevcutAy > 0 && hAy === mevcutAy - 1 && hYil === mevcutYil)
-    ) {
-      gecenAyHarcama += Number(h.toplam_tutar) || 0;
     }
   });
 
   const butceSayi = Number(butce?.replace(/\./g, "") || 0);
   const dolulukYuzdesi = butceSayi > 0 ? (buAyHarcama / butceSayi) * 100 : 0;
-  const kalanPara = butceSayi - buAyHarcama;
-
-  // UI İÇİN GEÇEN AY KIYASLAMA METNİ
-  let harcamaFarkiMetni = "";
-  let harcamaFarkiIkon = "remove-outline";
-  let harcamaFarkiRenk = "rgba(255, 255, 255, 0.50)";
-
-  if (gecenAyHarcama === 0) {
-    harcamaFarkiMetni = "Geçen ay veri yok";
-  } else {
-    const fark = buAyHarcama - gecenAyHarcama;
-    if (fark > 0) {
-      harcamaFarkiMetni = `${fark.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL daha fazla`;
-      harcamaFarkiIkon = "trending-up";
-      harcamaFarkiRenk = "#FF4B4B";
-    } else if (fark < 0) {
-      harcamaFarkiMetni = `${Math.abs(fark).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL daha az`;
-      harcamaFarkiIkon = "trending-down";
-      harcamaFarkiRenk = "#1DB954";
-    } else {
-      harcamaFarkiMetni = "Geçen ayla aynı";
-      harcamaFarkiRenk = "#1DB954";
-    }
-  }
 
   useEffect(() => {
     const aktifUid = uid || auth.currentUser?.uid;
@@ -142,11 +120,19 @@ export default function HomeScreen() {
           ...doc.data(),
         }));
 
-        // 🔴 ÇÖZÜM: Verileri en yeniden eskiye doğru kesin olarak sıralıyoruz.
-        const siraliVeriler = veriler.sort(
-          (a: any, b: any) =>
-            parseTarih(b.tarih).getTime() - parseTarih(a.tarih).getTime(),
-        );
+        const siraliVeriler = veriler.sort((a: any, b: any) => {
+          const dateA = parseTarih(a.tarih).getTime();
+          const dateB = parseTarih(b.tarih).getTime();
+          if (dateA !== dateB) return dateB - dateA;
+
+          const timeA = a.olusturulma_tarihi?.toMillis
+            ? a.olusturulma_tarihi.toMillis()
+            : 0;
+          const timeB = b.olusturulma_tarihi?.toMillis
+            ? b.olusturulma_tarihi.toMillis()
+            : 0;
+          return timeB - timeA;
+        });
 
         setHarcamalar(siraliVeriler);
         setYukleniyor(false);
@@ -172,11 +158,38 @@ export default function HomeScreen() {
     router.push(rota);
   };
 
+  const fisiSil = async () => {
+    if (!silinecekFisId) return;
+    setSiliyor(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    try {
+      await deleteDoc(doc(db, "Fisler", silinecekFisId));
+      const q = query(
+        collection(db, "Urunler"),
+        where("fis_id", "==", silinecekFisId),
+      );
+      const snap = await getDocs(q);
+      const silmeIslemleri = snap.docs.map((d) =>
+        deleteDoc(doc(db, "Urunler", d.id)),
+      );
+      await Promise.all(silmeIslemleri);
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      console.error(error);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setSiliyor(false);
+      setSilmeModalAcik(false);
+      setSilinecekFisId(null);
+    }
+  };
+
   if (yukleniyor) {
     return (
       <View
         style={[
-          styles.doluAnaEkran,
+          styles.anaEkran,
           { justifyContent: "center", alignItems: "center" },
         ]}
       >
@@ -185,362 +198,401 @@ export default function HomeScreen() {
     );
   }
 
-  // 1. SENARYO: BOŞ EKRAN
-  if (harcamalar.length === 0) {
-    return (
+  return (
+    <View style={{ flex: 1 }}>
       <ScrollView
         ref={scrollRef}
-        style={styles.bosAnaEkran}
+        style={styles.anaEkran}
         contentContainerStyle={{ paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.kapsayiciBos}>
-          <View style={styles.baslikAlaniBos}>
-            <Text style={styles.ustBaslikBos}>ANA SAYFA</Text>
-            <Text style={styles.merhabaMetinBos}>Merhaba, {isim}! 👋</Text>
-          </View>
-          <LinearGradient
-            colors={["rgba(29, 185, 84, 0.15)", "rgba(29, 185, 84, 0.08)"]}
-            style={styles.toplamKartiBos}
-          >
-            <Text style={styles.toplamEtiketBos}>TOPLAM HARCAMA</Text>
-            <View style={styles.paraAlaniBos}>
-              <Text style={styles.sifirRakamBos}>0,00</Text>
-              <Text style={styles.paraBirimiBos}>TL</Text>
-            </View>
-            <Text style={styles.altBilgiMetinBos}>
-              Bu ay henüz fiş taranmadı
+        {/* MERHABA BÖLÜMÜ */}
+        <View style={styles.ustBilgiKutusu}>
+          <Text style={styles.merhabaYazisi}>ANA SAYFA</Text>
+          <Text style={styles.isimYazisi}>
+            {isim ? `Merhaba, ${isim}! 👋` : "Merhaba! 👋"}
+          </Text>
+        </View>
+
+        {/* 1. KART: TOPLAM HARCAMA (YEŞİL KART) */}
+        <LinearGradient
+          colors={["rgba(29, 185, 84, 0.15)", "rgba(29, 185, 84, 0.08)"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.figmaToplamHarcamaKarti}
+        >
+          <Text style={styles.figmaButceUstBaslik}>TOPLAM HARCAMA</Text>
+          <View style={styles.figmaParaKutusu}>
+            <Text style={styles.figmaAnaPara}>
+              {buAyHarcama.toLocaleString("tr-TR", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
             </Text>
-          </LinearGradient>
-          <View style={styles.butceKartiBos}>
-            <View style={styles.butceUstBilgiBos}>
-              <Text style={styles.butceEtiketBos}>AYLIK BÜTÇE</Text>
-              <Text style={styles.yuzdeMetinBos}>%0</Text>
-            </View>
-            <View style={styles.butceOrtaBilgiBos}>
-              <Text style={styles.butceSifirBos}>0,00</Text>
-              <Text style={styles.butceToplamBos}> / {butce} TL</Text>
-            </View>
-            <View style={styles.progressBarZeminBos}>
-              <View
-                style={[
-                  styles.progressBarIciBos,
-                  { width: "0%", backgroundColor: "#1DB954" },
-                ]}
-              />
-            </View>
+            <Text style={styles.figmaTL}>TL</Text>
           </View>
-          <View style={styles.sonHarcamalarAlaniBos}>
-            <Text style={styles.sonHarcamalarBaslikBos}>Son Harcamalar</Text>
-            <View style={styles.bosListeKartiBos}>
-              <View style={styles.bosIkonZeminBos}>
+          <Text style={styles.figmaAltMetin}>
+            {buAyHarcama === 0
+              ? "Bu ay hiç harcama yok"
+              : "Bu ay harcanan toplam tutar"}
+          </Text>
+        </LinearGradient>
+
+        {/* 2. KART: AYLIK BÜTÇE (KOYU GRİ KART) */}
+        <View style={styles.figmaAylikButceKarti}>
+          <View style={styles.figmaIcUstSatir}>
+            <Text style={styles.figmaIcBaslik}>AYLIK BÜTÇE</Text>
+            <Text style={styles.figmaIcYuzde}>
+              %{Math.min(Math.round(dolulukYuzdesi), 100)}
+            </Text>
+          </View>
+          <View style={styles.figmaIcRakamKutusu}>
+            <Text style={styles.figmaIcHarcanan}>
+              {buAyHarcama.toLocaleString("tr-TR", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </Text>
+            <Text style={styles.figmaIcLimit}>
+              / {butceSayi.toLocaleString("tr-TR")} TL
+            </Text>
+          </View>
+          <View style={styles.figmaProgresZemin}>
+            <LinearGradient
+              colors={
+                dolulukYuzdesi > 100
+                  ? ["#FF4B4B", "#E53935"]
+                  : ["#1DB954", "#15A043"]
+              }
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={[
+                styles.figmaProgresDolgu,
+                { width: `${dolulukYuzdesi > 100 ? 100 : dolulukYuzdesi}%` },
+              ]}
+            />
+          </View>
+        </View>
+
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => navigasyonYap("/kamera")}
+          style={styles.tekliKameraButonZemin}
+        >
+          <LinearGradient
+            colors={["#1DB954", "#15A043"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.tekliKameraButonIc}
+          >
+            <Ionicons name="scan-outline" size={22} color="white" />
+            <Text style={styles.tekliKameraButonMetin}>Yeni Fiş Tara</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+
+        {/* LİSTE BAŞLIĞI */}
+        <View style={styles.listeBaslikSatiri}>
+          <Text style={styles.listeBasligi}>Son Harcamalar</Text>
+          {harcamalar.length > 0 && (
+            <TouchableOpacity
+              style={styles.tumuButonu}
+              activeOpacity={0.6}
+              onPress={() => navigasyonYap("/harcamalar")}
+            >
+              <Text style={styles.tumuMetin}>Tümü</Text>
+              <Ionicons name="chevron-forward" size={14} color="#1DB954" />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* LİSTE VEYA FIGMA BOŞ DURUM */}
+        <View style={styles.listeKutusu}>
+          {harcamalar.length === 0 ? (
+            <View style={styles.figmaBosListeKarti}>
+              <View style={styles.figmaBosListeIkonZemin}>
                 <Ionicons
                   name="receipt-outline"
                   size={28}
-                  color="rgba(255, 255, 255, 0.20)"
+                  color="rgba(255,255,255,0.4)"
                 />
               </View>
-              <Text style={styles.bosListeMetinBos}>Henüz harcama yok</Text>
+              <Text style={styles.figmaBosListeMetin}>Henüz harcama yok</Text>
+            </View>
+          ) : (
+            harcamalar.slice(0, 5).map((item) => {
+              const markaRengi = getMarkaRengi(item.magaza_adi);
+              return (
+                <TouchableOpacity
+                  key={item.id}
+                  style={styles.harcamaOgesi}
+                  activeOpacity={0.7}
+                  onPress={() =>
+                    navigasyonYap({
+                      pathname: "/urundetay",
+                      params: { id: item.id },
+                    })
+                  }
+                  onLongPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                    setSilinecekFisId(item.id);
+                    setSilmeModalAcik(true);
+                  }}
+                >
+                  <View
+                    style={[styles.ikonZemini, { backgroundColor: markaRengi }]}
+                  >
+                    <Text style={styles.ikonHarf}>
+                      {item.magaza_adi?.[0]?.toUpperCase() || "?"}
+                    </Text>
+                  </View>
+
+                  <View style={styles.harcamaBilgi}>
+                    <Text style={styles.harcamaAd} numberOfLines={1}>
+                      {item.magaza_adi}
+                    </Text>
+                    <Text style={styles.harcamaKategori}>
+                      {item.kategori || "Market"} ·{" "}
+                      {kisaTarihFormati(item.tarih)}
+                    </Text>
+                  </View>
+
+                  <View style={styles.harcamaSagTaraf}>
+                    <Text style={styles.harcamaTutar}>
+                      -
+                      {Number(item.toplam_tutar).toLocaleString("tr-TR", {
+                        minimumFractionDigits: 2,
+                      })}{" "}
+                      TL
+                    </Text>
+                    <Ionicons
+                      name="chevron-forward"
+                      size={16}
+                      color="rgba(255, 255, 255, 0.40)"
+                    />
+                  </View>
+                </TouchableOpacity>
+              );
+            })
+          )}
+        </View>
+      </ScrollView>
+
+      {/* SİLME MODALI */}
+      <Modal visible={silmeModalAcik} transparent={true} animationType="fade">
+        <View style={styles.modalArkaPlan}>
+          <View style={styles.modalKutu}>
+            <View style={styles.modalIkonZemin}>
+              <Ionicons name="trash-outline" size={32} color="#FF6B6B" />
+            </View>
+            <Text style={styles.modalBaslik}>Fişi Sil</Text>
+            <Text style={styles.modalMesaj}>
+              Bu fişi tamamen silmek istediğinize emin misiniz? İşlem geri
+              alınamaz.
+            </Text>
+
+            <View style={styles.modalButonKapsayici}>
+              <TouchableOpacity
+                style={styles.modalIptalButon}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setSilmeModalAcik(false);
+                  setSilinecekFisId(null);
+                }}
+                disabled={siliyor}
+              >
+                <Text style={styles.modalIptalMetin}>İptal</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.modalOnayButon}
+                onPress={fisiSil}
+                disabled={siliyor}
+              >
+                {siliyor ? (
+                  <ActivityIndicator size="small" color="white" />
+                ) : (
+                  <Text style={styles.modalOnayMetin}>Evet, Sil</Text>
+                )}
+              </TouchableOpacity>
             </View>
           </View>
         </View>
-      </ScrollView>
-    );
-  }
-
-  // 2. SENARYO: DOLU EKRAN
-  return (
-    <ScrollView
-      ref={scrollRef}
-      style={styles.doluAnaEkran}
-      contentContainerStyle={{ paddingBottom: 100 }}
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.ustBilgiKutusu}>
-        <View>
-          <Text style={styles.merhabaYazisi}>MERHABA</Text>
-          <Text style={styles.isimYazisi}>{isim} 👋</Text>
-        </View>
-      </View>
-
-      <LinearGradient
-        colors={["#1A2A1A", "#1E3A2E", "#1A2820"]}
-        style={styles.butceKarti}
-      >
-        <Text style={styles.kartBaslik}>TOPLAM HARCAMA (BU AY)</Text>
-        <View style={styles.paraKutusu}>
-          <Text style={styles.paraMiktari}>
-            {buAyHarcama.toLocaleString("tr-TR", {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            })}
-          </Text>
-          <Text style={styles.paraBirimi}>TL</Text>
-        </View>
-        <Text style={styles.altAciklama}>Bu ay harcanan toplam tutar</Text>
-        <View style={styles.progresMetinKutusu}>
-          <Text style={styles.progresYuzde}>
-            BÜTÇENİN %{Math.min(Math.round(dolulukYuzdesi), 100)}'Sİ
-          </Text>
-          <Text style={styles.progresLimit}>{butce} TL bütçe</Text>
-        </View>
-        <View style={styles.cubukZemin}>
-          <View
-            style={[
-              styles.cubukDolgu,
-              {
-                width: `${dolulukYuzdesi > 100 ? 100 : dolulukYuzdesi}%`,
-                backgroundColor: dolulukYuzdesi > 100 ? "#FF4B4B" : "#1DB954",
-              },
-            ]}
-          />
-        </View>
-        <View style={styles.istatistikKutusu}>
-          <View style={styles.istatistikOgesi}>
-            <Ionicons
-              name={harcamaFarkiIkon as any}
-              size={16}
-              color={harcamaFarkiRenk}
-            />
-            <Text
-              style={[styles.istatistikYazisi, { color: harcamaFarkiRenk }]}
-            >
-              {harcamaFarkiMetni}
-            </Text>
-          </View>
-          <View style={styles.istatistikOgesi}>
-            <Ionicons
-              name={kalanPara > 0 ? "wallet-outline" : "trending-down"}
-              size={16}
-              color={kalanPara > 0 ? "rgba(255,255,255,0.5)" : "#FF4B4B"}
-            />
-            <Text
-              style={[
-                styles.istatistikYazisi,
-                { color: kalanPara > 0 ? "rgba(255,255,255,0.5)" : "#FF4B4B" },
-              ]}
-            >
-              {kalanPara > 0
-                ? `${kalanPara.toLocaleString("tr-TR")} TL kaldı`
-                : "Bütçe aşıldı"}
-            </Text>
-          </View>
-        </View>
-      </LinearGradient>
-
-      {/* BUTONLAR */}
-      <View style={styles.butonlarSatiri}>
-        <TouchableOpacity
-          style={styles.butonGrup}
-          activeOpacity={0.7}
-          onPress={() => navigasyonYap("/kamera")}
-        >
-          <LinearGradient
-            colors={["rgba(29, 185, 84, 0.25)", "rgba(29, 185, 84, 0.1)"]}
-            style={styles.yuvarlakButon}
-          >
-            <Ionicons name="camera-outline" size={26} color="#1DB954" />
-          </LinearGradient>
-          <Text style={styles.butonMetni}>Harcama Ekle</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.butonGrup}
-          activeOpacity={0.7}
-          onPress={() => navigasyonYap("/harcamalar")}
-        >
-          <View style={styles.yuvarlakButonSiyah}>
-            <Ionicons
-              name="time-outline"
-              size={24}
-              color="rgba(255,255,255,0.8)"
-            />
-          </View>
-          <Text style={styles.butonMetni}>Geçmişi Gör</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.butonGrup}
-          activeOpacity={0.7}
-          onPress={() => navigasyonYap("/analiz")}
-        >
-          <View style={styles.yuvarlakButonSiyah}>
-            <Ionicons
-              name="pie-chart-outline"
-              size={24}
-              color="rgba(255,255,255,0.8)"
-            />
-          </View>
-          <Text style={styles.butonMetni}>Analiz</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.listeBaslikSatiri}>
-        <Text style={styles.listeBasligi}>Son Harcamalar</Text>
-        <TouchableOpacity
-          style={styles.tumuButonu}
-          activeOpacity={0.6}
-          onPress={() => navigasyonYap("/harcamalar")}
-        >
-          <Text style={styles.tumuMetin}>Tümü</Text>
-          <Ionicons name="chevron-forward" size={14} color="#1DB954" />
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.listeKutusu}>
-        {harcamalar.slice(0, 5).map((item) => {
-          const markaRengi = getMarkaRengi(item.magaza_adi);
-          return (
-            <TouchableOpacity
-              key={item.id}
-              style={styles.harcamaOgesi}
-              activeOpacity={0.7}
-              onPress={() =>
-                navigasyonYap({
-                  pathname: "/urundetay",
-                  params: { id: item.id },
-                })
-              }
-            >
-              {/* 🔴 ÇÖZÜM: Markaya Özel Dinamik İkon Rengi ve Gölgesi (Madde 2) */}
-              <View
-                style={[
-                  styles.ikonZemini,
-                  { backgroundColor: markaRengi },
-                  Platform.select({
-                    ios: {
-                      shadowColor: markaRengi,
-                      shadowOffset: { width: 0, height: 3 },
-                      shadowOpacity: 0.25,
-                      shadowRadius: 10,
-                    },
-                    android: { elevation: 6, shadowColor: markaRengi },
-                  }),
-                ]}
-              >
-                <Text style={styles.ikonHarf}>
-                  {item.magaza_adi?.[0]?.toUpperCase() || "?"}
-                </Text>
-              </View>
-
-              <View style={styles.harcamaBilgi}>
-                <Text style={styles.harcamaAd} numberOfLines={1}>
-                  {item.magaza_adi}
-                </Text>
-                <Text style={styles.harcamaKategori}>
-                  {item.kategori || "Market"} · {kisaTarihFormati(item.tarih)}
-                </Text>
-              </View>
-
-              <View style={styles.harcamaSagTaraf}>
-                <Text style={styles.harcamaTutar}>
-                  -
-                  {Number(item.toplam_tutar).toLocaleString("tr-TR", {
-                    minimumFractionDigits: 2,
-                  })}{" "}
-                  TL
-                </Text>
-                <Ionicons
-                  name="chevron-forward"
-                  size={16}
-                  color="rgba(255, 255, 255, 0.40)"
-                />
-              </View>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-    </ScrollView>
+      </Modal>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  bosAnaEkran: {
+  anaEkran: {
     flex: 1,
     backgroundColor: "#0A0A0A",
     paddingHorizontal: 20,
     paddingTop: 60,
   },
-  kapsayiciBos: { gap: 24 },
-  baslikAlaniBos: { gap: 4 },
-  ustBaslikBos: {
+
+  // BAŞLIK ALANI
+  ustBilgiKutusu: {
+    flexDirection: "column",
+    justifyContent: "flex-start",
+    alignItems: "flex-start",
+    marginBottom: 24,
+    gap: 3,
+  },
+  merhabaYazisi: {
     color: "rgba(255, 255, 255, 0.40)",
     fontSize: 11,
     fontWeight: "400",
     letterSpacing: 1,
   },
-  merhabaMetinBos: { color: "white", fontSize: 26, fontWeight: "800" },
-  toplamKartiBos: {
-    padding: 25,
+  isimYazisi: {
+    color: "white",
+    fontSize: 26,
+    fontWeight: "800",
+    lineHeight: 39,
+  },
+
+  // 1. KART: TOPLAM HARCAMA (YEŞİL)
+  figmaToplamHarcamaKarti: {
     borderRadius: 24,
     borderWidth: 1,
     borderColor: "rgba(29, 185, 84, 0.20)",
-    gap: 8,
+    paddingTop: 25,
+    paddingBottom: 25,
+    paddingHorizontal: 25,
+    marginBottom: 24,
   },
-  toplamEtiketBos: {
+  figmaButceUstBaslik: {
     color: "rgba(255, 255, 255, 0.50)",
     fontSize: 11,
     fontWeight: "400",
     letterSpacing: 1,
+    marginBottom: 8,
   },
-  paraAlaniBos: { flexDirection: "row", alignItems: "baseline", gap: 8 },
-  sifirRakamBos: { color: "#1DB954", fontSize: 42, fontWeight: "800" },
-  paraBirimiBos: { color: "#1DB954", fontSize: 20, fontWeight: "600" },
-  altBilgiMetinBos: {
+  figmaParaKutusu: {
+    flexDirection: "row",
+    alignItems: "baseline",
+  },
+  figmaAnaPara: {
+    color: "#1DB954",
+    fontSize: 42,
+    fontWeight: "800",
+    lineHeight: 63,
+  },
+  figmaTL: {
+    color: "#1DB954",
+    fontSize: 20,
+    fontWeight: "600",
+    marginLeft: 8,
+  },
+  figmaAltMetin: {
     color: "rgba(255, 255, 255, 0.40)",
     fontSize: 12,
     fontWeight: "400",
-    marginTop: 4,
+    marginTop: -4,
   },
-  butceKartiBos: {
+
+  // 2. KART: AYLIK BÜTÇE (KOYU GRİ)
+  figmaAylikButceKarti: {
     backgroundColor: "#18181B",
     borderRadius: 20,
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.08)",
     padding: 21,
-    gap: 12,
+    marginBottom: 24,
   },
-  butceUstBilgiBos: {
+  figmaIcUstSatir: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    marginBottom: 12,
   },
-  butceEtiketBos: {
+  figmaIcBaslik: {
     color: "rgba(255, 255, 255, 0.50)",
     fontSize: 11,
-    fontWeight: "400",
     letterSpacing: 1,
   },
-  yuzdeMetinBos: { color: "#1DB954", fontSize: 12, fontWeight: "600" },
-  butceOrtaBilgiBos: { flexDirection: "row", alignItems: "baseline" },
-  butceSifirBos: { color: "white", fontSize: 28, fontWeight: "800" },
-  butceToplamBos: { color: "rgba(255, 255, 255, 0.40)", fontSize: 14 },
-  progressBarZeminBos: {
+  figmaIcYuzde: {
+    color: "#1DB954",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  figmaIcRakamKutusu: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    marginBottom: 16,
+  },
+  figmaIcHarcanan: {
+    color: "white",
+    fontSize: 28,
+    fontWeight: "800",
+  },
+  figmaIcLimit: {
+    color: "rgba(255, 255, 255, 0.40)",
+    fontSize: 14,
+    marginLeft: 8,
+  },
+  figmaProgresZemin: {
     height: 8,
     backgroundColor: "rgba(255, 255, 255, 0.08)",
     borderRadius: 10,
-    marginTop: 4,
     overflow: "hidden",
   },
-  progressBarIciBos: { height: "100%", borderRadius: 10 },
-  sonHarcamalarAlaniBos: { gap: 16 },
-  sonHarcamalarBaslikBos: {
+  figmaProgresDolgu: {
+    height: "100%",
+    borderRadius: 10,
+  },
+
+  tekliKameraButonZemin: {
+    marginBottom: 30,
+  },
+  tekliKameraButonIc: {
+    height: 56,
+    borderRadius: 16,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 8,
+    shadowColor: "#1DB954",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  tekliKameraButonMetin: {
     color: "white",
-    fontSize: 14,
+    fontSize: 16,
+    fontWeight: "700",
+  },
+
+  // LİSTE BAŞLIĞI
+  listeBaslikSatiri: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  listeBasligi: {
+    color: "white",
+    fontSize: 13,
     fontWeight: "700",
     letterSpacing: 0.3,
   },
-  bosListeKartiBos: {
+  tumuButonu: { flexDirection: "row", alignItems: "center", gap: 2 },
+  tumuMetin: { color: "#1DB954", fontSize: 13, fontWeight: "500" },
+  listeKutusu: { gap: 12 },
+
+  // BOŞ DURUM KARTI (EMPTY STATE - FIGMA)
+  figmaBosListeKarti: {
+    height: 199,
     backgroundColor: "#18181B",
     borderRadius: 20,
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.06)",
-    paddingVertical: 48,
-    alignItems: "center",
     justifyContent: "center",
+    alignItems: "center",
     gap: 16,
   },
-  bosIkonZeminBos: {
+  figmaBosListeIkonZemin: {
     width: 64,
     height: 64,
     backgroundColor: "rgba(255, 255, 255, 0.04)",
@@ -548,117 +600,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  bosListeMetinBos: { color: "rgba(255, 255, 255, 0.35)", fontSize: 14 },
-  doluAnaEkran: {
-    flex: 1,
-    backgroundColor: "#121212",
-    paddingHorizontal: 20,
-    paddingTop: 60,
-  },
-  ustBilgiKutusu: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 30,
-  },
-  merhabaYazisi: {
-    color: "rgba(255, 255, 255, 0.45)",
-    fontSize: 13,
-    letterSpacing: 0.5,
-  },
-  isimYazisi: { color: "white", fontSize: 24, fontWeight: "700" },
-  butceKarti: {
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: "rgba(29, 185, 84, 0.20)",
-    padding: 24,
-  },
-  kartBaslik: {
-    color: "rgba(255, 255, 255, 0.50)",
-    fontSize: 11,
-    fontWeight: "600",
-    letterSpacing: 1.5,
-    marginBottom: 8,
-  },
-  paraKutusu: { flexDirection: "row", alignItems: "baseline", marginBottom: 4 },
-  paraMiktari: { color: "white", fontSize: 38, fontWeight: "800" },
-  paraBirimi: {
-    color: "rgba(255, 255, 255, 0.60)",
-    fontSize: 20,
-    marginLeft: 6,
-  },
-  altAciklama: {
+  figmaBosListeMetin: {
     color: "rgba(255, 255, 255, 0.35)",
-    fontSize: 12,
-    marginBottom: 24,
+    fontSize: 14,
+    fontWeight: "400",
   },
-  progresMetinKutusu: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  progresYuzde: {
-    color: "rgba(255, 255, 255, 0.50)",
-    fontSize: 11,
-    letterSpacing: 1,
-  },
-  progresLimit: { color: "#1DB954", fontSize: 11, fontWeight: "600" },
-  cubukZemin: {
-    height: 6,
-    backgroundColor: "rgba(255, 255, 255, 0.10)",
-    borderRadius: 3,
-    overflow: "hidden",
-  },
-  cubukDolgu: { height: "100%", borderRadius: 3 },
-  istatistikKutusu: { flexDirection: "row", marginTop: 16, gap: 16 },
-  istatistikOgesi: { flexDirection: "row", alignItems: "center", gap: 6 },
-  istatistikYazisi: {
-    color: "rgba(255, 255, 255, 0.50)",
-    fontSize: 11,
-    fontWeight: "500",
-  },
-  butonlarSatiri: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 30,
-    marginBottom: 30,
-  },
-  butonGrup: { alignItems: "center", gap: 8, flex: 1 },
-  yuvarlakButon: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "rgba(29, 185, 84, 0.35)",
-  },
-  yuvarlakButonSiyah: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.15)",
-  },
-  butonMetni: {
-    color: "rgba(255, 255, 255, 0.6)",
-    fontSize: 11,
-    fontWeight: "500",
-  },
-  listeBaslikSatiri: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 15,
-  },
-  listeBasligi: { color: "white", fontSize: 18, fontWeight: "700" },
-  tumuButonu: { flexDirection: "row", alignItems: "center", gap: 2 },
-  tumuMetin: { color: "#1DB954", fontSize: 14, fontWeight: "500" },
-  listeKutusu: { gap: 12 },
+
+  // STANDART HARCAMA ÖĞESİ
   harcamaOgesi: {
     flexDirection: "row",
     alignItems: "center",
@@ -672,7 +620,6 @@ const styles = StyleSheet.create({
   ikonZemini: {
     width: 42,
     height: 42,
-    backgroundColor: "#1DB954",
     borderRadius: 13,
     justifyContent: "center",
     alignItems: "center",
@@ -687,4 +634,67 @@ const styles = StyleSheet.create({
   },
   harcamaSagTaraf: { alignItems: "flex-end", justifyContent: "center", gap: 2 },
   harcamaTutar: { color: "white", fontSize: 14, fontWeight: "700" },
+
+  // SİLME MODALI STİLLERİ
+  modalArkaPlan: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.85)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 24,
+  },
+  modalKutu: {
+    width: "100%",
+    backgroundColor: "#18181B",
+    borderRadius: 24,
+    padding: 24,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255, 107, 107, 0.25)",
+  },
+  modalIkonZemin: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "rgba(255, 107, 107, 0.1)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255, 107, 107, 0.3)",
+  },
+  modalBaslik: {
+    color: "white",
+    fontSize: 20,
+    fontWeight: "800",
+    marginBottom: 8,
+  },
+  modalMesaj: {
+    color: "rgba(255, 255, 255, 0.5)",
+    fontSize: 14,
+    textAlign: "center",
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  modalButonKapsayici: { flexDirection: "row", gap: 12, width: "100%" },
+  modalIptalButon: {
+    flex: 1,
+    height: 50,
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.2)",
+  },
+  modalIptalMetin: { color: "white", fontSize: 15, fontWeight: "600" },
+  modalOnayButon: {
+    flex: 1,
+    height: 50,
+    backgroundColor: "#E53935",
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalOnayMetin: { color: "white", fontSize: 15, fontWeight: "700" },
 });
