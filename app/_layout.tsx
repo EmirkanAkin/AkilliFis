@@ -8,6 +8,11 @@ import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import "react-native-reanimated";
 
+import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
+import { useEffect } from "react";
+import { auth, db } from "../firebaseConfig";
+import { useStore } from "../store/useStore";
+
 const MyDarkTheme = {
   ...DarkTheme,
   colors: {
@@ -17,8 +22,90 @@ const MyDarkTheme = {
   },
 };
 
+const parseTarih = (tarihStr: string) => {
+  if (!tarihStr) return new Date();
+  const parts = tarihStr.split(".");
+  if (parts.length === 3) {
+    return new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
+  }
+  return new Date();
+};
+
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+
+  const {
+    uid,
+    setTumFisler,
+    setTumUrunler,
+    setIsFislerLoaded,
+    setIsim,
+    setButce,
+  } = useStore();
+
+  useEffect(() => {
+    const aktifUid = uid || auth.currentUser?.uid;
+
+    if (aktifUid) {
+      const userUnsub = onSnapshot(
+        doc(db, "Kullanicilar", aktifUid),
+        (snap) => {
+          if (snap.exists()) {
+            const veri = snap.data();
+            setIsim(veri.isim || "Misafir");
+            setButce(veri.aylik_butce || "0");
+          }
+        },
+      );
+
+      const qFis = query(
+        collection(db, "Fisler"),
+        where("kullanici_id", "==", aktifUid),
+      );
+      const fisUnsub = onSnapshot(qFis, (snapshot) => {
+        const veriler = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        })) as any[];
+
+        const siraliVeriler = veriler.sort((a: any, b: any) => {
+          const dateA = parseTarih(a.tarih).getTime();
+          const dateB = parseTarih(b.tarih).getTime();
+          if (dateA !== dateB) return dateB - dateA;
+          const timeA = a.olusturulma_tarihi?.toMillis
+            ? a.olusturulma_tarihi.toMillis()
+            : 0;
+          const timeB = b.olusturulma_tarihi?.toMillis
+            ? b.olusturulma_tarihi.toMillis()
+            : 0;
+          return timeB - timeA;
+        });
+
+        setTumFisler(siraliVeriler as any);
+        setIsFislerLoaded(true);
+      });
+
+      const qUrun = query(
+        collection(db, "Urunler"),
+        where("kullanici_id", "==", aktifUid),
+      );
+      const urunUnsub = onSnapshot(qUrun, (snapshot) => {
+        const urunVerileri = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+        setTumUrunler(urunVerileri);
+      });
+
+      return () => {
+        userUnsub();
+        fisUnsub();
+        urunUnsub(); // Aboneliği kapat
+      };
+    } else {
+      setIsFislerLoaded(true);
+    }
+  }, [uid]);
 
   return (
     <ThemeProvider value={colorScheme === "dark" ? MyDarkTheme : DefaultTheme}>
@@ -33,21 +120,16 @@ export default function RootLayout() {
         <Stack.Screen name="ilkgiris" />
         <Stack.Screen name="ilkgiris-butce" />
         <Stack.Screen name="(tabs)" />
-
         <Stack.Screen
           name="kamera"
           options={{ presentation: "modal", animation: "slide_from_bottom" }}
         />
-
         <Stack.Screen name="urundetay" />
         <Stack.Screen name="fisdogrulama" />
-
         <Stack.Screen
           name="manuelfis"
           options={{ presentation: "modal", animation: "slide_from_bottom" }}
         />
-
-        {/* --- MODALLAR BÖLÜMÜ --- */}
         <Stack.Screen
           name="butcemodal"
           options={{
@@ -56,7 +138,6 @@ export default function RootLayout() {
             contentStyle: { backgroundColor: "rgba(0,0,0,0.5)" },
           }}
         />
-
         <Stack.Screen
           name="isimmodal"
           options={{
@@ -65,8 +146,6 @@ export default function RootLayout() {
             contentStyle: { backgroundColor: "rgba(0,0,0,0.5)" },
           }}
         />
-
-        {/* YENİ EKLENEN: Mağaza Düzenleme Modalı */}
         <Stack.Screen
           name="MagazaDuzenleme"
           options={{

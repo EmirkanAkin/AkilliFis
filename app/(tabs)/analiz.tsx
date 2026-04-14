@@ -2,7 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
-import { collection, getDocs, query, where } from "firebase/firestore";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -16,7 +15,6 @@ import {
   View,
 } from "react-native";
 import Svg, { Circle, G } from "react-native-svg";
-import { auth, db } from "../../firebaseConfig";
 import { useStore } from "../../store/useStore";
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
@@ -32,9 +30,13 @@ const KATEGORI_RENGI: any = {
   Giyim: "#E91E63",
   Abonelik: "#5D00D2",
   Diğer: "#8B5CF6",
+  Market: "#1DB954",
+  Kafe: "#00704A",
+  Alışveriş: "#FF6000",
+  Sağlık: "#2196F3",
+  Eğlence: "#FF9800",
 };
 
-// TARİH FORMATLAMA ("DD.MM.YYYY" -> Date)
 const parseTarih = (tarihStr: string) => {
   if (!tarihStr) return new Date();
   const parts = tarihStr.split(".");
@@ -49,13 +51,8 @@ export default function AnalizScreen() {
   const animValue = useRef(new Animated.Value(0)).current;
   const scrollRef = useRef<ScrollView>(null);
 
-  const { isim, uid } = useStore();
+  const { isim, tumFisler, tumUrunler, isFislerLoaded } = useStore();
 
-  const [yukleniyor, setYukleniyor] = useState(true);
-  const [hamFisler, setHamFisler] = useState<any[]>([]);
-  const [hamUrunler, setHamUrunler] = useState<any[]>([]);
-
-  // DİNAMİK STATELER
   const [aktifSekme, setAktifSekme] = useState<"BU HAFTA" | "BU AY" | "BU YIL">(
     "BU AY",
   );
@@ -67,41 +64,8 @@ export default function AnalizScreen() {
     { gun: string; h: string; tutar: string }[]
   >([]);
 
-  const veriGetir = async () => {
-    const aktifUid = uid || auth.currentUser?.uid;
-    if (!aktifUid) return setYukleniyor(false);
-
-    try {
-      const qFis = query(
-        collection(db, "Fisler"),
-        where("kullanici_id", "==", aktifUid),
-      );
-      const fislerSnap = await getDocs(qFis);
-      const fisVerileri = fislerSnap.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      setHamFisler(fisVerileri);
-
-      const qUrun = query(
-        collection(db, "Urunler"),
-        where("kullanici_id", "==", aktifUid),
-      );
-      const urunlerSnap = await getDocs(qUrun);
-      const urunVerileri = urunlerSnap.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      setHamUrunler(urunVerileri);
-    } catch (error) {
-      console.error("Analiz verisi çekilemedi:", error);
-    } finally {
-      setYukleniyor(false);
-    }
-  };
-
   useEffect(() => {
-    if (hamFisler.length === 0) return;
+    if (tumFisler.length === 0) return;
 
     const bugun = new Date();
     const buAy = bugun.getMonth();
@@ -112,14 +76,14 @@ export default function AnalizScreen() {
     haftaninBasi.setDate(haftaninBasi.getDate() - gunOffset + 1);
     haftaninBasi.setHours(0, 0, 0, 0);
 
-    const buAyToplami = hamFisler
+    const buAyToplami = tumFisler
       .filter((f) => {
         const d = parseTarih(f.tarih);
         return d.getMonth() === buAy && d.getFullYear() === buYil;
       })
       .reduce((acc, f) => acc + (Number(f.toplam_tutar) || 0), 0);
 
-    const gecenAyToplami = hamFisler
+    const gecenAyToplami = tumFisler
       .filter((f) => {
         const d = parseTarih(f.tarih);
         const targetAy = buAy === 0 ? 11 : buAy - 1;
@@ -148,7 +112,7 @@ export default function AnalizScreen() {
       else setKupaData({ durum: "esit", yuzde: 0, fark: 0 });
     }
 
-    const buHaftaFisleri = hamFisler.filter(
+    const buHaftaFisleri = tumFisler.filter(
       (f) => parseTarih(f.tarih) >= haftaninBasi,
     );
     const gunler = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"];
@@ -174,29 +138,29 @@ export default function AnalizScreen() {
     if (aktifSekme === "BU HAFTA") {
       seciliFisler = buHaftaFisleri;
     } else if (aktifSekme === "BU AY") {
-      seciliFisler = hamFisler.filter((f) => {
+      seciliFisler = tumFisler.filter((f) => {
         const d = parseTarih(f.tarih);
         return d.getMonth() === buAy && d.getFullYear() === buYil;
       });
     } else if (aktifSekme === "BU YIL") {
-      seciliFisler = hamFisler.filter(
+      seciliFisler = tumFisler.filter(
         (f) => parseTarih(f.tarih).getFullYear() === buYil,
       );
     }
-
-    const gecerliFisIdler = seciliFisler.map((f) => f.id);
-    const seciliUrunler = hamUrunler.filter((u) =>
-      gecerliFisIdler.includes(u.fis_id),
-    );
-
-    let genelToplam = 0;
-    const kategoriToplami: any = {};
 
     const anaToplamHarcama = seciliFisler.reduce(
       (acc, f) => acc + (Number(f.toplam_tutar) || 0),
       0,
     );
     setToplamHarcama(anaToplamHarcama);
+
+    const gecerliFisIdler = seciliFisler.map((f) => f.id);
+    const seciliUrunler = tumUrunler.filter((u) =>
+      gecerliFisIdler.includes(u.fis_id),
+    );
+
+    let genelToplam = 0;
+    const kategoriToplami: any = {};
 
     seciliUrunler.forEach((u) => {
       const tutar = Number(u.fiyat) || 0;
@@ -215,7 +179,6 @@ export default function AnalizScreen() {
           maximumFractionDigits: 2,
         }),
         percent: percent,
-
         color: KATEGORI_RENGI[katAd] || "#8B5CF6",
       };
     });
@@ -230,13 +193,11 @@ export default function AnalizScreen() {
       easing: Easing.out(Easing.cubic),
       useNativeDriver: false,
     }).start();
-  }, [hamFisler, hamUrunler, aktifSekme]);
+  }, [tumFisler, tumUrunler, aktifSekme]);
 
   useFocusEffect(
     useCallback(() => {
       scrollRef.current?.scrollTo({ y: 0, animated: false });
-      setYukleniyor(true);
-      veriGetir();
     }, []),
   );
 
@@ -246,7 +207,7 @@ export default function AnalizScreen() {
     setSeciliBar(null);
   };
 
-  if (yukleniyor) {
+  if (!isFislerLoaded) {
     return (
       <View
         style={[
@@ -259,7 +220,7 @@ export default function AnalizScreen() {
     );
   }
 
-  if (hamFisler.length === 0) {
+  if (tumFisler.length === 0) {
     return (
       <ScrollView
         ref={scrollRef}
@@ -576,8 +537,11 @@ const styles = StyleSheet.create({
     lineHeight: 26.4,
   },
   isimVurgu: { color: "#1DB954" },
-  scrollIcerikBos: { paddingHorizontal: 20, paddingTop: 60 },
-  ortaIcerikBos: { flex: 1, alignItems: "center" },
+
+  // 🚀 BURASI DEĞİŞTİ: flexGrow ve justifyContent eklendi
+  scrollIcerikBos: { flexGrow: 1, paddingTop: 60, paddingBottom: 40 },
+  ortaIcerikBos: { flex: 1, alignItems: "center", justifyContent: "center" },
+
   merkezGrafikKapsayici: {
     height: 180,
     justifyContent: "center",

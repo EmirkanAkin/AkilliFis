@@ -24,7 +24,6 @@ const { width } = Dimensions.get("window");
 // ŞİFREN BURADA
 const GEMINI_API_KEY = "AIzaSyChRJhb0E4G6j0ZqVwN238af5C2gEMyR60".trim();
 
-// MADDE 16: METNİ OTOMATİK DÜZELTEN FONKSİYON (Title Case)
 const metniDuzenle = (metin: string) => {
   if (!metin) return "";
   return metin
@@ -50,6 +49,38 @@ export default function KameraScreen() {
 
   const { setTempFis } = useStore();
 
+  const [hazirModel, setHazirModel] = useState("gemini-1.5-flash-latest");
+
+  useEffect(() => {
+    const modeliHazirla = async () => {
+      try {
+        const modelsReq = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}`,
+        );
+        const modelsData = await modelsReq.json();
+
+        if (modelsData && modelsData.models) {
+          const acikModeller = modelsData.models.map((m: any) =>
+            m.name.replace("models/", ""),
+          );
+
+          if (acikModeller.includes("gemini-1.5-flash"))
+            setHazirModel("gemini-1.5-flash");
+          else if (acikModeller.includes("gemini-1.5-flash-latest"))
+            setHazirModel("gemini-1.5-flash-latest");
+          else if (acikModeller.includes("gemini-1.5-pro"))
+            setHazirModel("gemini-1.5-pro");
+          else setHazirModel(acikModeller[0]);
+        }
+      } catch (e) {
+        console.log(
+          "Arka plan model çekimi başarısız, varsayılan kullanılacak.",
+        );
+      }
+    };
+    modeliHazirla();
+  }, []);
+
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
@@ -69,29 +100,9 @@ export default function KameraScreen() {
     ).start();
   }, [scanAnim]);
 
-  const yapayZekayaGonder = async (base64Image: string, imageUri: string) => {
+  const yapayZekayaGonder = async (base64Image: string) => {
     setIsProcessing(true);
     try {
-      const modelsReq = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}`,
-      );
-      const modelsData = await modelsReq.json();
-
-      let secilenModel = "gemini-1.5-flash";
-
-      if (modelsData && modelsData.models) {
-        const acikModeller = modelsData.models.map((m: any) =>
-          m.name.replace("models/", ""),
-        );
-        if (acikModeller.includes("gemini-1.5-flash"))
-          secilenModel = "gemini-1.5-flash";
-        else if (acikModeller.includes("gemini-1.5-pro"))
-          secilenModel = "gemini-1.5-pro";
-        else if (acikModeller.includes("gemini-pro-vision"))
-          secilenModel = "gemini-pro-vision";
-        else secilenModel = acikModeller[0];
-      }
-
       const prompt = `
         Sen uzman bir fiş ve fatura okuma yapay zekasısın.
         DİKKAT: Eğer gönderilen görsel bir fiş, fatura veya adisyon DEĞİLSE (Örn: manzara, insan, boş bir masa resmi vb.), BANA SADECE ŞU JSON'U DÖNDÜR:
@@ -100,20 +111,10 @@ export default function KameraScreen() {
         Eğer görsel bir fiş ise, görseli analiz et ve BANA SADECE AŞAĞIDAKİ JSON FORMATINDA CEVAP VER. Başka hiçbir kelime kullanma.
         
         KURALLAR:
-        1. "magazaAdi" ve ürün isimlerini "Title Case" formatında düzelt. (Örn: "MİGROS T.A.Ş" yerine "Migros", "BRAVO ASLAN" yerine "Bravo Aslan" yaz).
+        1. "magazaAdi" ve ürün isimlerini "Title Case" formatında düzelt. (Örn: "MİGROS T.A.Ş" yerine "Migros").
         2. FİŞİN GENEL KATEGORİSİ ("kategori" alanı) sadece şunlardan biri olabilir: Market, Kafe, Alışveriş, Teknoloji, Abonelik, Gıda, Temizlik, Giyim, Eğlence, Sağlık, Diğer.
-        3. ÜRÜNLERİN KENDİ KATEGORİSİ (urunler içindeki "kategori" alanı) KESİNLİKLE sadece şu listedekilerden biri olmalıdır, başka kelime uydurma:
-           - "Sebze/Meyve"
-           - "Temizlik"
-           - "Atıştırmalık/İçecek"
-           - "Temel Gıda"
-           - "Kafe/Restoran"
-           - "Kozmetik/Kişisel"
-           - "Teknoloji"
-           - "Giyim"
-           - "Abonelik"
-           - "Diğer"
-           Lütfen her ürünün ne olduğunu anlayarak bu listedeki en uygun kategoriye ata. Bulamazsan "Diğer" yap.
+        3. ÜRÜNLERİN KENDİ KATEGORİSİ (urunler içindeki "kategori" alanı) KESİNLİKLE sadece şu listedekilerden biri olmalıdır: "Sebze/Meyve", "Temizlik", "Atıştırmalık/İçecek", "Temel Gıda", "Kafe/Restoran", "Kozmetik/Kişisel", "Teknoloji", "Giyim", "Abonelik", "Diğer".
+        4. ÇOK ÖNEMLİ: "toplamTutar" için KESİNLİKLE fişin en altındaki nihai "GENEL TOPLAM", "TOPLAM" veya "ÖDENEN TUTAR" değerini bul. Asla KDV matrahını veya "ARA TOPLAM" değerlerini toplam tutar olarak yazma!
 
         Format:
         {
@@ -133,7 +134,8 @@ export default function KameraScreen() {
 
       const cleanBase64 = base64Image.replace(/^data:image\/\w+;base64,/, "");
 
-      const response = await fetch(
+      let secilenModel = hazirModel;
+      let response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${secilenModel}:generateContent?key=${GEMINI_API_KEY}`,
         {
           method: "POST",
@@ -151,7 +153,32 @@ export default function KameraScreen() {
         },
       );
 
-      const result = await response.json();
+      let result = await response.json();
+
+      if (!response.ok && result.error?.message?.includes("high demand")) {
+        console.log("Ana model yoğun, yedek modele (flash-8b) geçiliyor...");
+        secilenModel = "gemini-1.5-flash-8b";
+        response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${secilenModel}:generateContent?key=${GEMINI_API_KEY}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [
+                {
+                  parts: [
+                    { text: prompt },
+                    {
+                      inlineData: { mimeType: "image/jpeg", data: cleanBase64 },
+                    },
+                  ],
+                },
+              ],
+            }),
+          },
+        );
+        result = await response.json();
+      }
 
       if (!response.ok)
         throw new Error(
@@ -167,12 +194,10 @@ export default function KameraScreen() {
 
       const parsedData = JSON.parse(jsonMatch[0]);
 
-      // M15: Eğer yapay zeka bunun fiş olmadığını anlarsa hata fırlat
       if (parsedData.hata) {
         throw new Error("Görselde geçerli bir fiş veya fatura bulunamadı.");
       }
 
-      // M16: JS FONKSİYONU İLE GARANTİLİ DÜZELTME
       const duzenlenmisUrunler = (parsedData.urunler || []).map(
         (urun: any) => ({
           ...urun,
@@ -180,7 +205,6 @@ export default function KameraScreen() {
         }),
       );
 
-      // M4 ve M16: Veri atamaları
       setTempFis({
         magazaAdi: metniDuzenle(parsedData.magazaAdi || "Bilinmiyor"),
         tarih: parsedData.tarih || "",
@@ -191,7 +215,7 @@ export default function KameraScreen() {
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-      router.push({ pathname: "/fisdogrulama", params: { imageUri } });
+      router.replace("/fisdogrulama");
     } catch (error: any) {
       console.error("Yapay Zeka Hatası:", error.message);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -199,7 +223,9 @@ export default function KameraScreen() {
       setHataMesaji(
         error.message.includes("fiş veya fatura")
           ? "Bu görsel bir fişe benzemiyor. Lütfen geçerli bir fiş okutun."
-          : `Okuma başarısız: İnternet bağlantınızı kontrol edin.`,
+          : error.message.includes("high demand")
+            ? "Şu an Yapay Zeka sunucuları aşırı yoğun. Lütfen 5-10 saniye sonra tekrar çekim yapın."
+            : `Okuma başarısız: İnternet bağlantınızı kontrol edin.`,
       );
       setHataModalAcik(true);
       setTempFis({
@@ -219,12 +245,12 @@ export default function KameraScreen() {
     let result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
       allowsEditing: true,
-      quality: 0.7,
+      quality: 0.6,
       base64: true,
     });
 
     if (!result.canceled && result.assets[0].base64) {
-      await yapayZekayaGonder(result.assets[0].base64, result.assets[0].uri);
+      await yapayZekayaGonder(result.assets[0].base64);
     }
   };
 
@@ -234,13 +260,13 @@ export default function KameraScreen() {
       try {
         setIsProcessing(true);
         const photo = await cameraRef.current.takePictureAsync({
-          quality: 0.7,
+          quality: 0.6,
           base64: true,
           shutterSound: false,
         });
 
         if (photo.base64) {
-          await yapayZekayaGonder(photo.base64, photo.uri);
+          await yapayZekayaGonder(photo.base64);
         }
       } catch (e) {
         console.error("Çekim hatası:", e);

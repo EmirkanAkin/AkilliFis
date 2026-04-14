@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import React, { useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -94,11 +94,9 @@ const getYerelMaxTarih = () => {
 
 export default function FisDogrulamaScreen() {
   const router = useRouter();
-  const { imageUri } = useLocalSearchParams();
   const { uid, tempFis, setTempFis } = useStore();
 
   const [yukleniyor, setYukleniyor] = useState(false);
-
   const [tarihModalAcik, setTarihModalAcik] = useState(false);
 
   // MANUEL DÜZENLEME STATE'LERİ
@@ -212,6 +210,7 @@ export default function FisDogrulamaScreen() {
     }
 
     try {
+      // 1. Ana Fişi Kaydet
       const fisRef = await addDoc(collection(db, "Fisler"), {
         kullanici_id: aktifUid,
         magaza_adi: tempFis.magazaAdi,
@@ -220,19 +219,25 @@ export default function FisDogrulamaScreen() {
         toplam_tutar: anlikToplam,
         olusturulma_tarihi: serverTimestamp(),
       });
-      for (const urun of tempFis.urunler) {
-        await addDoc(collection(db, "Urunler"), {
+
+      const urunKayitIslemleri = tempFis.urunler.map((urun) =>
+        addDoc(collection(db, "Urunler"), {
           fis_id: fisRef.id,
           urun_adi: urun.ad,
-          fiyat: urun.fiyat,
+          fiyat: Number(urun.fiyat) || 0,
           kategori: urun.kategori || "Diğer",
           kullanici_id: aktifUid,
-        });
-      }
+        }),
+      );
+
+      // Tüm ürünlerin kaydını aynı anda başlat ve bitmesini bekle
+      await Promise.all(urunKayitIslemleri);
+
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setTempFis({ magazaAdi: "", urunler: [], toplamTutar: 0, kategori: "" });
       router.push("/(tabs)");
     } catch (e) {
+      console.error(e);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       router.push("/(tabs)");
     } finally {

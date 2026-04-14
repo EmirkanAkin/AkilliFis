@@ -14,7 +14,6 @@ import {
   View,
 } from "react-native";
 
-// ZUSTAND VE FIREBASE BAĞLANTILARI
 import { signInAnonymously } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
@@ -23,15 +22,15 @@ import { useStore } from "../store/useStore";
 export default function IlkGirisButceScreen() {
   const router = useRouter();
 
+  // 🚀 SENİN SİHİRLİ ANİMASYON İÇİN REF VE STATE GERİ GELDİ
   const scrollRef = useRef<ScrollView>(null);
-
-  // Lokal state (Ekranda yazarken tuttuğumuz yer)
-  const [seciliButce, setSeciliButce] = useState("5.000");
   const [klavyeAcik, setKlavyeAcik] = useState(false);
 
-  // ZUSTAND'DAN İSİM, BÜTÇE KAYDETME VE UID KAYDETME FONKSİYONLARINI ÇEKTİK
+  const [seciliButce, setSeciliButce] = useState("5.000");
+
   const { isim, setButce, setUid } = useStore();
 
+  // 🚀 KLAVYE AÇILDIĞINDA SAYFAYI YAĞ GİBİ AŞAĞI KAYDIRAN ANİMASYON
   useEffect(() => {
     const klavyeGosterildi = Keyboard.addListener(
       Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
@@ -70,19 +69,14 @@ export default function IlkGirisButceScreen() {
     setSeciliButce(formatli);
   };
 
-  // LOG KONTROLLÜ YENİ KAYIT FONKSİYONU
   const devamEt = async () => {
-    console.log("1. Butona basıldı, işlem başlıyor...");
     try {
-      console.log("2. Firebase Anonim Giriş deneniyor...");
       const userCredential = await signInAnonymously(auth);
       const user = userCredential.user;
-      console.log("3. Giriş başarılı! Firebase Kimliği (UID):", user.uid);
 
       setUid(user.uid);
       setButce(seciliButce);
 
-      console.log("4. Veritabanına (Firestore) yazma isteği gönderiliyor...");
       await setDoc(doc(db, "Kullanicilar", user.uid), {
         id: user.uid,
         isim: isim,
@@ -90,9 +84,8 @@ export default function IlkGirisButceScreen() {
         kalan_butce: seciliButce,
         kayit_tarihi: new Date().toISOString(),
       });
-      console.log("5. MÜKEMMEL! Veri başarıyla kasaya yazıldı.");
 
-      router.push("/(tabs)");
+      router.replace("/(tabs)");
     } catch (error: any) {
       console.error("KAYIT HATASI:", error.message);
       alert("Hata oluştu: " + error.message);
@@ -104,105 +97,105 @@ export default function IlkGirisButceScreen() {
       style={styles.zemin}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <ScrollView
-        ref={scrollRef}
-        style={{ flex: 1 }}
-        contentContainerStyle={styles.scrollKapsayici}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-        bounces={false}
-      >
-        <View style={styles.ustBar}>
-          <View style={styles.ilerlemeKapsayici}>
-            <View style={styles.ilerlemeNoktasiPasif} />
-            <View style={styles.ilerlemeCizgisiAktif} />
+      <View style={styles.anaKapsayici}>
+        <ScrollView
+          ref={scrollRef} // 🚀 REF BURAYA BAĞLANDI
+          style={{ flex: 1 }}
+          contentContainerStyle={styles.scrollKapsayici}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+        >
+          <View style={styles.ustBar}>
+            <View style={styles.ilerlemeKapsayici}>
+              <View style={styles.ilerlemeNoktasiPasif} />
+              <View style={styles.ilerlemeCizgisiAktif} />
+            </View>
+            <Text style={styles.adimMetni}>Adım 2/2</Text>
           </View>
-          <Text style={styles.adimMetni}>Adım 2/2</Text>
-        </View>
 
-        <View style={styles.baslikKapsayici}>
-          <View style={styles.ikonKapsayici}>
-            <Ionicons name="sparkles" size={28} color="#1DB954" />
+          <View style={styles.baslikKapsayici}>
+            <View style={styles.ikonKapsayici}>
+              <Ionicons name="sparkles" size={28} color="#1DB954" />
+            </View>
+            <Text style={styles.anaBaslik}>Aylık Bütçeni</Text>
+            <Text style={styles.anaBaslik}>Belirle</Text>
+            <Text style={styles.altBaslik}>
+              Harcamalarını kontrol altında tutmak için bir hedef belirle.
+            </Text>
           </View>
-          <Text style={styles.anaBaslik}>Aylık Bütçeni</Text>
-          <Text style={styles.anaBaslik}>Belirle</Text>
-          <Text style={styles.altBaslik}>
-            Harcamalarını kontrol altında tutmak için bir hedef belirle.
-          </Text>
-        </View>
 
-        <View style={styles.ortaAlan}>
-          <View style={styles.hizliSecimKapsayici}>
-            {[3000, 5000, 10000].map((deger) => {
-              const formatliDeger = deger
-                .toString()
-                .replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-              const aktifMi = seciliButce === formatliDeger;
+          <View style={styles.ortaAlan}>
+            <View style={styles.hizliSecimKapsayici}>
+              {[3000, 5000, 10000].map((deger) => {
+                const formatliDeger = deger
+                  .toString()
+                  .replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+                const aktifMi = seciliButce === formatliDeger;
 
-              return (
-                <TouchableOpacity
-                  key={deger}
-                  style={[
-                    styles.hizliSecimButon,
-                    aktifMi && styles.hizliSecimButonAktif,
-                  ]}
-                  activeOpacity={0.7}
-                  onPress={() => hizliSecimYap(deger)}
-                >
-                  <Text
+                return (
+                  <TouchableOpacity
+                    key={deger}
                     style={[
-                      styles.hizliSecimMetin,
-                      aktifMi && styles.hizliSecimMetinAktif,
+                      styles.hizliSecimButon,
+                      aktifMi && styles.hizliSecimButonAktif,
                     ]}
+                    activeOpacity={0.7}
+                    onPress={() => hizliSecimYap(deger)}
                   >
-                    {formatliDeger} TL
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
+                    <Text
+                      style={[
+                        styles.hizliSecimMetin,
+                        aktifMi && styles.hizliSecimMetinAktif,
+                      ]}
+                    >
+                      {formatliDeger} TL
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <View style={styles.devGostergeKarti}>
+              <Text style={styles.devGostergeEtiket}>AYLIK BÜTÇE</Text>
+              <View style={styles.devRakamKapsayici}>
+                <TextInput
+                  style={styles.devRakamInput}
+                  value={seciliButce}
+                  onChangeText={butceDegisti}
+                  keyboardType="numeric"
+                  maxLength={10}
+                  cursorColor="#1DB954"
+                  selectionColor="transparent"
+                />
+                <Text style={styles.devParaBirimi}>TL</Text>
+              </View>
+              <View style={styles.ayracCizgi} />
+              <View style={styles.bilgiSatiri}>
+                <View style={styles.kucukYesilNokta} />
+                <Text style={styles.bilgiMetni}>
+                  İstediğin zaman değiştirebilirsin
+                </Text>
+              </View>
+            </View>
           </View>
 
-          <View style={styles.devGostergeKarti}>
-            <Text style={styles.devGostergeEtiket}>AYLIK BÜTÇE</Text>
-            <View style={styles.devRakamKapsayici}>
-              <TextInput
-                style={styles.devRakamInput}
-                value={seciliButce}
-                onChangeText={butceDegisti}
-                keyboardType="numeric"
-                maxLength={10}
-                cursorColor="#1DB954"
-                selectionColor="transparent"
-              />
-              <Text style={styles.devParaBirimi}>TL</Text>
-            </View>
-            <View style={styles.ayracCizgi} />
-            <View style={styles.bilgiSatiri}>
-              <View style={styles.kucukYesilNokta} />
-              <Text style={styles.bilgiMetni}>
-                İstediğin zaman değiştirebilirsin
-              </Text>
-            </View>
-          </View>
+          {/* 🚀 ANİMASYONUN RAHATÇA KAYMASI İÇİN GÖRÜNMEZ BOŞLUK GERİ GELDİ */}
+          {klavyeAcik && <View style={{ height: 100 }} />}
+        </ScrollView>
+
+        <View style={styles.sabitAltButonAlani}>
+          <TouchableOpacity activeOpacity={0.8} onPress={devamEt}>
+            <LinearGradient
+              colors={["#1DB954", "#15A043"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.anaButon}
+            >
+              <Text style={styles.anaButonMetni}>Uygulamaya Başla</Text>
+            </LinearGradient>
+          </TouchableOpacity>
         </View>
-
-        {/* Klavye açıldığında rahatça kayması için en altta görünmez bir boşluk */}
-        {klavyeAcik && <View style={{ height: 60 }} />}
-      </ScrollView>
-
-      <View
-        style={[styles.altButonKapsayici, klavyeAcik && { paddingBottom: 16 }]}
-      >
-        <TouchableOpacity activeOpacity={0.8} onPress={devamEt}>
-          <LinearGradient
-            colors={["#1DB954", "#15A043"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.anaButon}
-          >
-            <Text style={styles.anaButonMetni}>Uygulamaya Başla</Text>
-          </LinearGradient>
-        </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
   );
@@ -210,13 +203,16 @@ export default function IlkGirisButceScreen() {
 
 const styles = StyleSheet.create({
   zemin: { flex: 1, backgroundColor: "#121212" },
+  anaKapsayici: {
+    flex: 1,
+    justifyContent: "space-between",
+  },
   scrollKapsayici: {
     flexGrow: 1,
     paddingHorizontal: 24,
     paddingTop: 60,
     paddingBottom: 20,
   },
-
   ustBar: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -246,7 +242,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "500",
   },
-
   baslikKapsayici: { marginBottom: 30 },
   ikonKapsayici: {
     width: 40,
@@ -269,7 +264,6 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingRight: 20,
   },
-
   ortaAlan: { flex: 1, justifyContent: "flex-start" },
   hizliSecimKapsayici: { flexDirection: "row", gap: 12, marginBottom: 24 },
   hizliSecimButon: {
@@ -292,7 +286,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   hizliSecimMetinAktif: { color: "#1DB954" },
-
   devGostergeKarti: {
     backgroundColor: "rgba(255, 255, 255, 0.03)",
     borderRadius: 26,
@@ -317,7 +310,6 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
     marginBottom: 16,
   },
-
   devRakamKapsayici: { flexDirection: "row", alignItems: "center", gap: 10 },
   devRakamInput: {
     color: "white",
@@ -335,7 +327,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     marginTop: 15,
   },
-
   ayracCizgi: {
     width: 200,
     height: 1,
@@ -354,11 +345,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "500",
   },
-
-  altButonKapsayici: {
+  sabitAltButonAlani: {
     paddingHorizontal: 24,
-    paddingBottom: 40,
-    paddingTop: 16,
+    paddingTop: 10,
+    paddingBottom: Platform.OS === "ios" ? 40 : 24,
     backgroundColor: "#121212",
   },
   anaButon: {

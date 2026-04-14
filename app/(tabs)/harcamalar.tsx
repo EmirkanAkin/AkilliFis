@@ -1,5 +1,4 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect } from "@react-navigation/native";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
@@ -11,29 +10,20 @@ import {
   query,
   where,
 } from "firebase/firestore";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Modal,
   ScrollView,
+  SectionList,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
-import { auth, db } from "../../firebaseConfig";
+import { db } from "../../firebaseConfig";
 import { useStore } from "../../store/useStore";
-
-// TARİH FORMATLAYICI
-const parseTarih = (tarihStr: string) => {
-  if (!tarihStr) return new Date();
-  const parts = tarihStr.split(".");
-  if (parts.length === 3) {
-    return new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
-  }
-  return new Date();
-};
 
 const formatlaTarih = (tarihStr: string) => {
   if (!tarihStr) return { ayYil: "BİLİNMEYEN TARİH", gunAyYil: "" };
@@ -79,7 +69,6 @@ const formatlaTarih = (tarihStr: string) => {
   };
 };
 
-// MARKA RENKLENDİRİCİ
 const getMarkaRengi = (markaAd: string) => {
   if (!markaAd) return "#1DB954";
   const m = markaAd.toLowerCase();
@@ -100,83 +89,26 @@ const getMarkaRengi = (markaAd: string) => {
 
 export default function HarcamalarScreen() {
   const router = useRouter();
-  const { uid } = useStore();
 
-  const [harcamalar, setHarcamalar] = useState<any[]>([]);
-  const [yukleniyor, setYukleniyor] = useState(true);
+  const { tumFisler, isFislerLoaded } = useStore();
 
-  // FİLTRELEME VE ARAMA
   const [aktifFiltre, setAktifFiltre] = useState("Tümü");
   const [aramaMetni, setAramaMetni] = useState("");
 
-  // SİLME İŞLEMİ İÇİN STATELER
   const [silmeModalAcik, setSilmeModalAcik] = useState(false);
   const [silinecekFisId, setSilinecekFisId] = useState<string | null>(null);
   const [siliyor, setSiliyor] = useState(false);
 
-  // Filtrelenen kategorideki son fiş silinirse otomatik olarak "Tümü"ne atar.
   useEffect(() => {
     if (aktifFiltre !== "Tümü") {
-      const kategoriHalaVarMi = harcamalar.some(
+      const kategoriHalaVarMi = tumFisler.some(
         (h) => (h.kategori || "Diğer") === aktifFiltre,
       );
       if (!kategoriHalaVarMi) {
         setAktifFiltre("Tümü");
       }
     }
-  }, [harcamalar, aktifFiltre]);
-
-  const veriGetir = async () => {
-    const aktifUid = uid || auth.currentUser?.uid;
-    if (!aktifUid) return setYukleniyor(false);
-
-    try {
-      const q = query(
-        collection(db, "Fisler"),
-        where("kullanici_id", "==", aktifUid),
-      );
-      const fislerSnap = await getDocs(q);
-      const veriler = fislerSnap.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-
-      const siraliVeriler = veriler.sort((a: any, b: any) => {
-        // 1. Önce gün/ay/yıl formatındaki string tarihleri sayısallaştırıp karşılaştırıyoruz.
-        const dateA = parseTarih(a.tarih).getTime();
-        const dateB = parseTarih(b.tarih).getTime();
-
-        // Eğer tarihler farklıysa, normal tarihe göre sırala (Yeni tarih üstte)
-        if (dateA !== dateB) {
-          return dateB - dateA;
-        }
-
-        // 2. EĞER TARİHLER AYNIYSA (İkisi de bugün girilmişse):
-        // Firebase'in oluşturduğu milisaniyelik timestamp'e bak ve en son ekleneni üste koy
-        const timeA = a.olusturulma_tarihi?.toMillis
-          ? a.olusturulma_tarihi.toMillis()
-          : 0;
-        const timeB = b.olusturulma_tarihi?.toMillis
-          ? b.olusturulma_tarihi.toMillis()
-          : 0;
-
-        return timeB - timeA;
-      });
-
-      setHarcamalar(siraliVeriler);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setYukleniyor(false);
-    }
-  };
-
-  useFocusEffect(
-    useCallback(() => {
-      setYukleniyor(true);
-      veriGetir();
-    }, []),
-  );
+  }, [tumFisler, aktifFiltre]);
 
   const fisiSil = async () => {
     if (!silinecekFisId) return;
@@ -195,7 +127,6 @@ export default function HarcamalarScreen() {
       await Promise.all(silmeIslemleri);
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setHarcamalar((prev) => prev.filter((h) => h.id !== silinecekFisId));
     } catch (error) {
       console.error(error);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -206,8 +137,7 @@ export default function HarcamalarScreen() {
     }
   };
 
-  // KATEGORİ BAZLI FİLTRELEME MANTIĞI
-  const kategoriSayilari = harcamalar.reduce(
+  const kategoriSayilari = tumFisler.reduce(
     (acc, h) => {
       const kat = h.kategori || "Diğer";
       acc[kat] = (acc[kat] || 0) + 1;
@@ -220,10 +150,9 @@ export default function HarcamalarScreen() {
 
   let filtrelenmisHarcamalar =
     aktifFiltre === "Tümü"
-      ? harcamalar
-      : harcamalar.filter((h) => (h.kategori || "Diğer") === aktifFiltre);
+      ? tumFisler
+      : tumFisler.filter((h) => (h.kategori || "Diğer") === aktifFiltre);
 
-  // ARAMA MANTIĞI
   if (aramaMetni.trim() !== "") {
     filtrelenmisHarcamalar = filtrelenmisHarcamalar.filter(
       (h) =>
@@ -232,23 +161,25 @@ export default function HarcamalarScreen() {
     );
   }
 
-  // AYLARA GÖRE GRUPLAMA
-  const gruplar: { ayYil: string; toplam: number; veriler: any[] }[] = [];
+  const gruplarMap = new Map();
+
   filtrelenmisHarcamalar.forEach((h) => {
     const { ayYil, gunAyYil } = formatlaTarih(h.tarih);
     h.gosterimTarihi = gunAyYil;
     const tutarNum = Number(h.toplam_tutar) || 0;
 
-    const mevcutGrup = gruplar.find((g) => g.ayYil === ayYil);
-    if (mevcutGrup) {
-      mevcutGrup.veriler.push(h);
-      mevcutGrup.toplam += tutarNum;
+    if (gruplarMap.has(ayYil)) {
+      const grup = gruplarMap.get(ayYil);
+      grup.data.push(h);
+      grup.toplam += tutarNum;
     } else {
-      gruplar.push({ ayYil: ayYil, toplam: tutarNum, veriler: [h] });
+      gruplarMap.set(ayYil, { title: ayYil, toplam: tutarNum, data: [h] });
     }
   });
 
-  if (yukleniyor) {
+  const sectionData = Array.from(gruplarMap.values());
+
+  if (!isFislerLoaded) {
     return (
       <View
         style={[
@@ -261,7 +192,7 @@ export default function HarcamalarScreen() {
     );
   }
 
-  if (harcamalar.length === 0) {
+  if (tumFisler.length === 0) {
     return (
       <View style={styles.anaEkranBos}>
         <View style={styles.baslikAlaniBos}>
@@ -303,9 +234,83 @@ export default function HarcamalarScreen() {
     );
   }
 
+  const renderItem = ({ item }: { item: any }) => {
+    const markaRengi = getMarkaRengi(item.magaza_adi);
+    return (
+      <TouchableOpacity
+        style={styles.harcamaOgesi}
+        activeOpacity={0.7}
+        onPress={() =>
+          router.push({
+            pathname: "/urundetay",
+            params: { id: item.id },
+          })
+        }
+        onLongPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+          setSilinecekFisId(item.id);
+          setSilmeModalAcik(true);
+        }}
+      >
+        <View style={[styles.ikonZemini, { backgroundColor: markaRengi }]}>
+          <Text style={styles.ikonHarf}>
+            {item.magaza_adi?.[0]?.toUpperCase() || "?"}
+          </Text>
+        </View>
+        <View style={styles.harcamaBilgi}>
+          <Text style={styles.harcamaAd} numberOfLines={1}>
+            {item.magaza_adi}
+          </Text>
+          <View style={styles.kategoriVeTarihKutusu}>
+            <View style={styles.kategoriKutucuk}>
+              <Text style={styles.kategoriKutucukMetin}>
+                {item.kategori || "Diğer"}
+              </Text>
+            </View>
+            <Text style={styles.harcamaTarihMetni}>{item.gosterimTarihi}</Text>
+          </View>
+        </View>
+        <View style={styles.fiyatVeOkKapsayici}>
+          <Text style={styles.harcamaTutar}>
+            -
+            {Number(item.toplam_tutar).toLocaleString("tr-TR", {
+              minimumFractionDigits: 2,
+            })}{" "}
+            TL
+          </Text>
+          <Ionicons
+            name="chevron-forward"
+            size={14}
+            color="rgba(255,255,255,0.20)"
+          />
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderSectionHeader = ({ section: { title, toplam } }: any) => (
+    <View style={styles.tarihSatiri}>
+      <View style={styles.tarihSolGrup}>
+        <View style={styles.tarihCizgisi} />
+        <Text style={styles.tarihBaslik}>{title}</Text>
+      </View>
+      <View style={styles.tarihSagGrup}>
+        <Ionicons
+          name="trending-down-outline"
+          size={12}
+          color="rgba(255, 107, 107, 0.6)"
+        />
+        <Text style={styles.tarihToplamTutar}>
+          {toplam.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TL
+        </Text>
+      </View>
+    </View>
+  );
+
   return (
     <View style={{ flex: 1 }}>
       <View style={styles.anaEkran}>
+        {/* ÜST BİLGİLER - SectionList dışına alındı (Sticky Header olmaması için ListHeaderComponent yapabilirdik ama böyle daha temiz) */}
         <View style={{ paddingHorizontal: 20, marginBottom: 15 }}>
           <Text style={styles.ustBaslikBos}>KAYITLAR</Text>
           <View style={styles.headerKutusu}>
@@ -349,7 +354,7 @@ export default function HarcamalarScreen() {
             {filtreListesi.map((kat) => {
               const isAktif = aktifFiltre === kat;
               const adet =
-                kat === "Tümü" ? harcamalar.length : kategoriSayilari[kat];
+                kat === "Tümü" ? tumFisler.length : kategoriSayilari[kat];
               return (
                 <TouchableOpacity
                   key={kat}
@@ -389,109 +394,29 @@ export default function HarcamalarScreen() {
           </ScrollView>
         </View>
 
-        <ScrollView
-          style={styles.listeAlani}
-          showsVerticalScrollIndicator={false}
-        >
-          {gruplar.length === 0 && (
-            <Text
-              style={{
-                color: "rgba(255,255,255,0.4)",
-                textAlign: "center",
-                marginTop: 40,
-              }}
-            >
-              Bu aramaya uygun kayıt bulunamadı.
-            </Text>
-          )}
-
-          {gruplar.map((grup, index) => (
-            <View key={index} style={{ marginBottom: 20 }}>
-              <View style={styles.tarihSatiri}>
-                <View style={styles.tarihSolGrup}>
-                  <View style={styles.tarihCizgisi} />
-                  <Text style={styles.tarihBaslik}>{grup.ayYil}</Text>
-                </View>
-                <View style={styles.tarihSagGrup}>
-                  <Ionicons
-                    name="trending-down-outline"
-                    size={12}
-                    color="rgba(255, 107, 107, 0.6)"
-                  />
-                  <Text style={styles.tarihToplamTutar}>
-                    {grup.toplam.toLocaleString("tr-TR", {
-                      minimumFractionDigits: 2,
-                    })}{" "}
-                    TL
-                  </Text>
-                </View>
-              </View>
-
-              {grup.veriler.map((item: any) => {
-                const markaRengi = getMarkaRengi(item.magaza_adi);
-                return (
-                  <TouchableOpacity
-                    key={item.id}
-                    style={styles.harcamaOgesi}
-                    activeOpacity={0.7}
-                    onPress={() =>
-                      router.push({
-                        pathname: "/urundetay",
-                        params: { id: item.id },
-                      })
-                    }
-                    onLongPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-                      setSilinecekFisId(item.id);
-                      setSilmeModalAcik(true);
-                    }}
-                  >
-                    <View
-                      style={[
-                        styles.ikonZemini,
-                        { backgroundColor: markaRengi },
-                      ]}
-                    >
-                      <Text style={styles.ikonHarf}>
-                        {item.magaza_adi?.[0]?.toUpperCase() || "?"}
-                      </Text>
-                    </View>
-                    <View style={styles.harcamaBilgi}>
-                      <Text style={styles.harcamaAd} numberOfLines={1}>
-                        {item.magaza_adi}
-                      </Text>
-                      <View style={styles.kategoriVeTarihKutusu}>
-                        <View style={styles.kategoriKutucuk}>
-                          <Text style={styles.kategoriKutucukMetin}>
-                            {item.kategori || "Diğer"}
-                          </Text>
-                        </View>
-                        <Text style={styles.harcamaTarihMetni}>
-                          {item.gosterimTarihi}
-                        </Text>
-                      </View>
-                    </View>
-                    <View style={styles.fiyatVeOkKapsayici}>
-                      <Text style={styles.harcamaTutar}>
-                        -
-                        {Number(item.toplam_tutar).toLocaleString("tr-TR", {
-                          minimumFractionDigits: 2,
-                        })}{" "}
-                        TL
-                      </Text>
-                      <Ionicons
-                        name="chevron-forward"
-                        size={14}
-                        color="rgba(255,255,255,0.20)"
-                      />
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          ))}
-          <View style={{ height: 40 }} />
-        </ScrollView>
+        {sectionData.length === 0 ? (
+          <Text
+            style={{
+              color: "rgba(255,255,255,0.4)",
+              textAlign: "center",
+              marginTop: 40,
+            }}
+          >
+            Bu aramaya uygun kayıt bulunamadı.
+          </Text>
+        ) : (
+          <SectionList
+            sections={sectionData}
+            keyExtractor={(item) => item.id}
+            renderItem={renderItem}
+            renderSectionHeader={renderSectionHeader}
+            contentContainerStyle={styles.listeAlani}
+            showsVerticalScrollIndicator={false}
+            initialNumToRender={10} // Sadece ilk 10 öğeyi çiz
+            maxToRenderPerBatch={10} // Kaydırırken 10'ar 10'ar çiz
+            windowSize={5} // Ekranda görünmeyenleri sil
+          />
+        )}
       </View>
 
       <Modal visible={silmeModalAcik} transparent={true} animationType="fade">
@@ -675,7 +600,7 @@ const styles = StyleSheet.create({
   },
   filtreRozetMetinAktif: { color: "#1DB954" },
 
-  listeAlani: { paddingHorizontal: 20 },
+  listeAlani: { paddingHorizontal: 20, paddingBottom: 40 }, // YENİ
   tarihSatiri: {
     flexDirection: "row",
     justifyContent: "space-between",

@@ -235,15 +235,16 @@ export default function ManuelEkleScreen() {
       });
 
       if (urunler.length > 0) {
-        for (const urun of urunler) {
-          await addDoc(collection(db, "Urunler"), {
+        const urunKayitIslemleri = urunler.map((urun) =>
+          addDoc(collection(db, "Urunler"), {
             fis_id: fisRef.id,
             urun_adi: urun.isim,
             fiyat: Number(urun.fiyat.replace(/\./g, "")),
             kategori: urun.kategori,
             kullanici_id: aktifUid,
-          });
-        }
+          }),
+        );
+        await Promise.all(urunKayitIslemleri);
       } else {
         await addDoc(collection(db, "Urunler"), {
           fis_id: fisRef.id,
@@ -253,6 +254,7 @@ export default function ManuelEkleScreen() {
           kullanici_id: aktifUid,
         });
       }
+
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.push("/(tabs)");
     } catch (error) {
@@ -569,7 +571,7 @@ export default function ManuelEkleScreen() {
                 placeholderTextColor="rgba(255, 255, 255, 0.30)"
                 keyboardType="numeric"
                 value={miktar}
-                onChangeText={(t) => setMiktar(t.replace(/[^0-9.]/g, ""))}
+                onChangeText={miktarDegisti}
                 onFocus={() => setOdaklananKutu("miktar")}
                 onBlur={() => setOdaklananKutu(null)}
                 selectionColor="#1DB954"
@@ -804,7 +806,6 @@ const styles = StyleSheet.create({
     borderColor: "#1DB954",
     backgroundColor: "rgba(29, 185, 84, 0.05)",
   },
-
   urunKalemSatiri: {
     flexDirection: "row",
     alignItems: "center",
@@ -836,7 +837,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-
   yeniUrunSatiri: { flexDirection: "row", gap: 8, alignItems: "center" },
   yeniUrunInputIsim: {
     flex: 1,
@@ -871,7 +871,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-
   neonInputZemin: {
     backgroundColor: "#18181B",
     borderRadius: 16,
