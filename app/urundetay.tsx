@@ -55,13 +55,14 @@ export default function UrunDetayiScreen() {
 
   const [yukleniyor, setYukleniyor] = useState(true);
   const [duzenleModalAcik, setDuzenleModalAcik] = useState(false);
+
   const [fisDetay, setFisDetay] = useState({
     magaza: "Yükleniyor...",
     tarih: "",
     toplam: 0,
   });
-  const [duzenlenenUrunler, setDuzenlenenUrunler] = useState<any[]>([]);
 
+  const [duzenlenenUrunler, setDuzenlenenUrunler] = useState<any[]>([]);
   const [kategoriModalAcik, setKategoriModalAcik] = useState(false);
   const [aktifKategoriSecimi, setAktifKategoriSecimi] = useState<number | null>(
     null,
@@ -77,10 +78,14 @@ export default function UrunDetayiScreen() {
 
   useEffect(() => {
     if (!id) return;
+
+    const seciliFisId = Array.isArray(id) ? id[0] : id;
+
     const veriGetir = async () => {
       try {
-        const fisRef = doc(db, "Fisler", id as string);
+        const fisRef = doc(db, "Fisler", seciliFisId);
         const fisSnap = await getDoc(fisRef);
+
         if (fisSnap.exists()) {
           const data = fisSnap.data();
           setFisDetay({
@@ -89,8 +94,9 @@ export default function UrunDetayiScreen() {
             toplam: Number(data.toplam_tutar) || 0,
           });
         }
+
         const urunlerRef = collection(db, "Urunler");
-        const q = query(urunlerRef, where("fis_id", "==", id));
+        const q = query(urunlerRef, where("fis_id", "==", seciliFisId));
         const urunlerSnap = await getDocs(q);
 
         const geciciUrunler: any[] = [];
@@ -103,13 +109,15 @@ export default function UrunDetayiScreen() {
             kategori: urunData.kategori || "Diğer",
           });
         });
+
         setDuzenlenenUrunler(geciciUrunler);
       } catch (error) {
-        console.error(error);
+        console.error("🔥 VERİ ÇEKME HATASI:", error);
       } finally {
         setYukleniyor(false);
       }
     };
+
     veriGetir();
   }, [id]);
 
@@ -157,8 +165,10 @@ export default function UrunDetayiScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setMagazaModalAcik(false);
 
+    const seciliFisId = Array.isArray(id) ? id[0] : id; // DÜZELTME
+
     try {
-      const fisRef = doc(db, "Fisler", id as string);
+      const fisRef = doc(db, "Fisler", seciliFisId);
       await updateDoc(fisRef, { magaza_adi: geciciMagazaAd.trim() });
       setFisDetay((prev) => ({ ...prev, magaza: geciciMagazaAd.trim() }));
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -180,16 +190,20 @@ export default function UrunDetayiScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setDuzenleModalAcik(false);
     setYukleniyor(true);
+
+    const seciliFisId = Array.isArray(id) ? id[0] : id; // DÜZELTME
+
     try {
       const yeniToplam = duzenlenenUrunler.reduce(
         (acc, u) => acc + Number(u.fiyat.replace(",", ".")),
         0,
       );
-      const fisRef = doc(db, "Fisler", id as string);
+
+      const fisRef = doc(db, "Fisler", seciliFisId);
       await updateDoc(fisRef, { toplam_tutar: yeniToplam });
 
       const urunlerRef = collection(db, "Urunler");
-      const q = query(urunlerRef, where("fis_id", "==", id));
+      const q = query(urunlerRef, where("fis_id", "==", seciliFisId));
       const eskiUrunlerSnap = await getDocs(q);
 
       const silmeIslemleri = eskiUrunlerSnap.docs.map((d) =>
@@ -200,7 +214,7 @@ export default function UrunDetayiScreen() {
       const aktifUid = auth.currentUser?.uid;
       const eklemeIslemleri = duzenlenenUrunler.map((urun) =>
         addDoc(collection(db, "Urunler"), {
-          fis_id: id,
+          fis_id: seciliFisId,
           urun_adi: urun.isim.trim(),
           fiyat: Number(urun.fiyat.replace(",", ".")),
           kategori: urun.kategori,
@@ -216,6 +230,7 @@ export default function UrunDetayiScreen() {
         fiyat: Number(doc.data().fiyat).toFixed(2).replace(".", ","),
         kategori: doc.data().kategori || "Diğer",
       }));
+
       setDuzenlenenUrunler(guncelUrunler);
       setFisDetay((prev) => ({ ...prev, toplam: yeniToplam }));
     } catch (error) {
@@ -234,10 +249,18 @@ export default function UrunDetayiScreen() {
   const gercektenFisiSil = async () => {
     setSiliyor(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+
+    const seciliFisId = Array.isArray(id) ? id[0] : id; // DÜZELTME
+
     try {
-      await deleteDoc(doc(db, "Fisler", id as string));
-      const q = query(collection(db, "Urunler"), where("fis_id", "==", id));
+      await deleteDoc(doc(db, "Fisler", seciliFisId));
+
+      const q = query(
+        collection(db, "Urunler"),
+        where("fis_id", "==", seciliFisId),
+      );
       const urunlerSnap = await getDocs(q);
+
       const silmeIslemleri = urunlerSnap.docs.map((d) =>
         deleteDoc(doc(db, "Urunler", d.id)),
       );
@@ -476,6 +499,7 @@ export default function UrunDetayiScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* DÜZENLE MODALI */}
         <Modal
           visible={duzenleModalAcik}
           transparent={true}
@@ -624,6 +648,7 @@ export default function UrunDetayiScreen() {
           </KeyboardAvoidingView>
         </Modal>
 
+        {/* KATEGORİ SEÇİM MODALI */}
         <Modal
           visible={kategoriModalAcik}
           transparent={true}
@@ -702,6 +727,7 @@ export default function UrunDetayiScreen() {
           </KeyboardAvoidingView>
         </Modal>
 
+        {/* MAĞAZA DÜZENLE MODALI */}
         <Modal
           visible={magazaModalAcik}
           transparent={true}
@@ -1249,7 +1275,6 @@ const styles = StyleSheet.create({
   },
   magazaOnaylaButonPasif: { backgroundColor: "rgba(255, 255, 255, 0.1)" },
   magazaOnaylaButonMetin: { color: "white", fontSize: 16, fontWeight: "700" },
-
   silmeModalArkaPlan: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.85)",

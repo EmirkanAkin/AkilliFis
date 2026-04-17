@@ -1,8 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import { StyleSheet, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context"; // Radarı ekledik
 
 export default function TabLayout() {
+  const insets = useSafeAreaInsets(); // Radarı çalıştırdık
+
   return (
     <Tabs
       screenOptions={{
@@ -11,14 +14,16 @@ export default function TabLayout() {
           backgroundColor: "#1E1E1EF2",
           borderTopWidth: 1,
           borderTopColor: "#1A1A1A",
-          height: 70, // Menü yüksekliğini rahat bıraktık
+          // MÜHENDİSLİK ÇÖZÜMÜ: Telefonun alt tuşları kadar yüksekliği ve boşluğu dinamik artırıyoruz
+          height: 70 + insets.bottom,
+          paddingBottom: insets.bottom > 0 ? insets.bottom : 10,
         },
         tabBarActiveTintColor: "#1DB954",
         tabBarInactiveTintColor: "#888888",
         tabBarLabelStyle: {
           fontSize: 11,
           fontWeight: "600",
-          marginTop: 4, // Yazıları alttan biraz yukarı ittik
+          marginTop: 4,
         },
       }}
     >
@@ -28,7 +33,6 @@ export default function TabLayout() {
         options={{
           title: "Ana Sayfa",
           tabBarIcon: ({ color, focused }) => (
-            // Eğer 'focused' (seçili) ise aktifKapsul stilini de ekle
             <View style={[styles.kapsul, focused && styles.aktifKapsul]}>
               <Ionicons
                 name={focused ? "home" : "home-outline"}
@@ -96,16 +100,14 @@ export default function TabLayout() {
 
 // STİL DOSYASI
 const styles = StyleSheet.create({
-  // İkonu saran kutunun temel tasarımı (İkonların kaybolmasını engeller)
   kapsul: {
-    width: 56, // Sabit genişlik
-    height: 32, // Sabit yükseklik
-    borderRadius: 16, // Tam bir hap (kapsül) şekli
-    justifyContent: "center", // İkonu dikeyde ortala
-    alignItems: "center", // İkonu yatayda ortala
-    marginTop: 5, // İkonu yukarıdan hafifçe hizala
+    width: 56,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 5,
   },
-  // Sadece o an seçili (aktif) olan sekmeye eklenecek yeşil arka plan
   aktifKapsul: {
     backgroundColor: "rgba(29, 185, 84, 0.15)",
   },

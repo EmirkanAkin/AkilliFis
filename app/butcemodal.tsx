@@ -1,6 +1,8 @@
 import { useRouter } from "expo-router";
+import { doc, updateDoc } from "firebase/firestore";
 import React, { useState } from "react";
 import {
+  ActivityIndicator,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -9,18 +11,20 @@ import {
   TextInput,
   TouchableOpacity,
   TouchableWithoutFeedback,
-  View
+  View,
 } from "react-native";
-
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { auth, db } from "../firebaseConfig";
 import { useStore } from "../store/useStore";
 
 export default function ButceBelirleModal() {
   const router = useRouter();
-
+  const insets = useSafeAreaInsets(); // Radarı çalıştırdık
   const mevcutButce = useStore((state) => state.butce);
   const setGlobalButce = useStore((state) => state.setButce);
 
   const [butce, setButce] = useState(mevcutButce !== "0" ? mevcutButce : "");
+  const [kaydediliyor, setKaydediliyor] = useState(false);
 
   const butceDegisti = (metin: string) => {
     const safRakam = metin.replace(/[^0-9]/g, "");
@@ -32,75 +36,96 @@ export default function ButceBelirleModal() {
     setButce(formatli);
   };
 
-  const onayla = () => {
-    setGlobalButce(butce);
-    router.back();
+  const onayla = async () => {
+    if (!butce.trim()) return;
+
+    setKaydediliyor(true);
+
+    try {
+      const uid = auth.currentUser?.uid;
+      if (uid) {
+        // Çelik Kasa: Firebase'e yaz
+        await updateDoc(doc(db, "Kullanicilar", uid), { aylik_butce: butce });
+      }
+
+      // Hızlı Hafıza: Zustand'ı güncelle
+      setGlobalButce(butce);
+      router.back();
+    } catch (error) {
+      console.error("Bütçe güncellenirken hata:", error);
+    } finally {
+      setKaydediliyor(false);
+    }
   };
 
   return (
-    // behavior ayarını ve offset'i modal yapısına göre güncelledik
     <KeyboardAvoidingView
-      style={styles.modalZemin}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
+      style={{ flex: 1 }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
-      {/* Şeffaf alana tıklandığında hem klavye kapansın hem modal gitsin */}
-      <TouchableWithoutFeedback
-        onPress={() => {
-          Keyboard.dismiss();
-          router.back();
-        }}
-      >
-        <View style={styles.seffafAlan} />
-      </TouchableWithoutFeedback>
-
-      {/* Kart içeriği */}
-      <View style={styles.kartIcerik}>
-        <View style={styles.tutmaCizgisiKapsayici}>
-          <View style={styles.tutmaCizgisi} />
-        </View>
-
-        <Text style={styles.baslik}>Bütçe Belirle</Text>
-
-        <View style={styles.formGrubu}>
-          <Text style={styles.etiket}>Aylık Bütçe</Text>
-          <View style={styles.inputZemin}>
-            <TextInput
-              style={styles.input}
-              placeholder="Örn: 18.000"
-              placeholderTextColor="rgba(255, 255, 255, 0.50)"
-              keyboardType="numeric" // decimal-pad bazen bazı cihazlarda sapıtabilir, numeric en güvenlisi
-              value={butce}
-              onChangeText={butceDegisti}
-              autoFocus={true}
-              maxLength={10}
-              cursorColor="#1DB954"
-            />
-            <Text style={styles.paraBirimi}>TL</Text>
-          </View>
-        </View>
-
-        <TouchableOpacity
-          style={[
-            styles.onaylaButon,
-            butce.trim() === "" && styles.onaylaButonPasif,
-          ]}
-          activeOpacity={0.8}
-          onPress={onayla}
-          disabled={butce.trim() === ""}
+      <View style={styles.modalZemin}>
+        <TouchableWithoutFeedback
+          onPress={() => {
+            Keyboard.dismiss();
+            router.back();
+          }}
         >
-          <Text
-            style={[
-              styles.onaylaButonMetin,
-              butce.trim() === "" && styles.onaylaButonMetinPasif,
-            ]}
-          >
-            Onayla
-          </Text>
-        </TouchableOpacity>
+          <View style={styles.seffafAlan} />
+        </TouchableWithoutFeedback>
 
-        {/* Alt boşluk: Klavye açıkken iOS'ta ekstra güvenli alan sağlar */}
-        <View style={{ height: Platform.OS === "ios" ? 40 : 20 }} />
+        <View
+          style={[
+            styles.kartIcerik,
+            { paddingBottom: Math.max(insets.bottom, 20) + 10 },
+          ]}
+        >
+          <View style={styles.tutmaCizgisiKapsayici}>
+            <View style={styles.tutmaCizgisi} />
+          </View>
+
+          <Text style={styles.baslik}>Bütçe Belirle</Text>
+
+          <View style={styles.formGrubu}>
+            <Text style={styles.etiket}>Aylık Bütçe</Text>
+            <View style={styles.inputZemin}>
+              <TextInput
+                style={styles.input}
+                placeholder="Örn: 18.000"
+                placeholderTextColor="rgba(255, 255, 255, 0.50)"
+                keyboardType="numeric"
+                value={butce}
+                onChangeText={butceDegisti}
+                autoFocus={true}
+                maxLength={10}
+                cursorColor="#1DB954"
+              />
+              <Text style={styles.paraBirimi}>TL</Text>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={[
+              styles.onaylaButon,
+              butce.trim() === "" && styles.onaylaButonPasif,
+            ]}
+            activeOpacity={0.8}
+            onPress={onayla}
+            disabled={butce.trim() === "" || kaydediliyor}
+          >
+            {kaydediliyor ? (
+              <ActivityIndicator size="small" color="white" />
+            ) : (
+              <Text
+                style={[
+                  styles.onaylaButonMetin,
+                  butce.trim() === "" && styles.onaylaButonMetinPasif,
+                ]}
+              >
+                Onayla
+              </Text>
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
     </KeyboardAvoidingView>
   );
@@ -110,15 +135,9 @@ const styles = StyleSheet.create({
   modalZemin: {
     flex: 1,
     justifyContent: "flex-end",
-    backgroundColor: "rgba(0,0,0,0.5)", // Arka planı hafif karartmak tasarımı daha kaliteli gösterir
+    backgroundColor: "rgba(0,0,0,0.5)",
   },
-  seffafAlan: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
+  seffafAlan: { ...StyleSheet.absoluteFillObject },
   kartIcerik: {
     backgroundColor: "#18181B",
     borderTopLeftRadius: 32,
@@ -127,9 +146,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255, 255, 255, 0.08)",
     paddingHorizontal: 25,
     paddingTop: 8,
-    paddingBottom: Platform.OS === "ios" ? 20 : 10,
     width: "100%",
-    // Android'de kartın klavye üstünde kalması için gereken gölge/elevation
     elevation: 25,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: -10 },
@@ -165,12 +182,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
   },
-  input: {
-    flex: 1,
-    color: "white",
-    fontSize: 20,
-    fontWeight: "700",
-  },
+  input: { flex: 1, color: "white", fontSize: 20, fontWeight: "700" },
   paraBirimi: {
     color: "#1DB954",
     fontSize: 18,
@@ -183,7 +195,6 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     justifyContent: "center",
     alignItems: "center",
-    // Butonun klavye üzerinde parlaması için
     shadowColor: "#1DB954",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4,

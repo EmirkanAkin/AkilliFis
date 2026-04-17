@@ -146,14 +146,6 @@ export default function RootLayout() {
             contentStyle: { backgroundColor: "rgba(0,0,0,0.5)" },
           }}
         />
-        <Stack.Screen
-          name="MagazaDuzenleme"
-          options={{
-            presentation: "transparentModal",
-            animation: "fade",
-            contentStyle: { backgroundColor: "rgba(0,0,0,0.5)" },
-          }}
-        />
       </Stack>
       <StatusBar style="light" />
     </ThemeProvider>

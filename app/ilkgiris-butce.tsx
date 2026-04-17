@@ -22,7 +22,6 @@ import { useStore } from "../store/useStore";
 export default function IlkGirisButceScreen() {
   const router = useRouter();
 
-  // 🚀 SENİN SİHİRLİ ANİMASYON İÇİN REF VE STATE GERİ GELDİ
   const scrollRef = useRef<ScrollView>(null);
   const [klavyeAcik, setKlavyeAcik] = useState(false);
 
@@ -30,7 +29,6 @@ export default function IlkGirisButceScreen() {
 
   const { isim, setButce, setUid } = useStore();
 
-  // 🚀 KLAVYE AÇILDIĞINDA SAYFAYI YAĞ GİBİ AŞAĞI KAYDIRAN ANİMASYON
   useEffect(() => {
     const klavyeGosterildi = Keyboard.addListener(
       Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
@@ -81,7 +79,6 @@ export default function IlkGirisButceScreen() {
         id: user.uid,
         isim: isim,
         aylik_butce: seciliButce,
-        kalan_butce: seciliButce,
         kayit_tarihi: new Date().toISOString(),
       });
 
@@ -99,7 +96,7 @@ export default function IlkGirisButceScreen() {
     >
       <View style={styles.anaKapsayici}>
         <ScrollView
-          ref={scrollRef} // 🚀 REF BURAYA BAĞLANDI
+          ref={scrollRef}
           style={{ flex: 1 }}
           contentContainerStyle={styles.scrollKapsayici}
           keyboardShouldPersistTaps="handled"
@@ -180,7 +177,6 @@ export default function IlkGirisButceScreen() {
             </View>
           </View>
 
-          {/* 🚀 ANİMASYONUN RAHATÇA KAYMASI İÇİN GÖRÜNMEZ BOŞLUK GERİ GELDİ */}
           {klavyeAcik && <View style={{ height: 100 }} />}
         </ScrollView>
 

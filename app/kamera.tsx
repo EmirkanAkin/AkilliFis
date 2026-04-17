@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as Haptics from "expo-haptics";
+import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
@@ -42,7 +43,9 @@ export default function KameraScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [flash, setFlash] = useState<"off" | "on">("off");
   const cameraRef = useRef<any>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
+
+  const [islemDurumu, setIslemDurumu] = useState("");
+  const isProcessing = islemDurumu !== "";
 
   const [hataModalAcik, setHataModalAcik] = useState(false);
   const [hataMesaji, setHataMesaji] = useState("");
@@ -100,8 +103,35 @@ export default function KameraScreen() {
     ).start();
   }, [scanAnim]);
 
+  const resmiIsleVeGonder = async (uri: string) => {
+    try {
+      setIslemDurumu("Görüntü optimize ediliyor...");
+
+      const manipResult = await ImageManipulator.manipulateAsync(
+        uri,
+        [{ resize: { width: 800 } }],
+        {
+          compress: 0.6,
+          format: ImageManipulator.SaveFormat.JPEG,
+          base64: true,
+        },
+      );
+
+      if (manipResult.base64) {
+        await yapayZekayaGonder(manipResult.base64);
+      } else {
+        throw new Error("Görüntü işlenemedi.");
+      }
+    } catch (e) {
+      console.log("Sıkıştırma Hatası:", e);
+      setHataMesaji("Görüntü işlenirken bir hata oluştu.");
+      setHataModalAcik(true);
+      setIslemDurumu("");
+    }
+  };
+
   const yapayZekayaGonder = async (base64Image: string) => {
-    setIsProcessing(true);
+    setIslemDurumu("Sunucuya iletiliyor...");
     try {
       const prompt = `
         Sen uzman bir fiş ve fatura okuma yapay zekasısın.
@@ -112,9 +142,10 @@ export default function KameraScreen() {
         
         KURALLAR:
         1. "magazaAdi" ve ürün isimlerini "Title Case" formatında düzelt. (Örn: "MİGROS T.A.Ş" yerine "Migros").
-        2. FİŞİN GENEL KATEGORİSİ ("kategori" alanı) sadece şunlardan biri olabilir: Market, Kafe, Alışveriş, Teknoloji, Abonelik, Gıda, Temizlik, Giyim, Eğlence, Sağlık, Diğer.
-        3. ÜRÜNLERİN KENDİ KATEGORİSİ (urunler içindeki "kategori" alanı) KESİNLİKLE sadece şu listedekilerden biri olmalıdır: "Sebze/Meyve", "Temizlik", "Atıştırmalık/İçecek", "Temel Gıda", "Kafe/Restoran", "Kozmetik/Kişisel", "Teknoloji", "Giyim", "Abonelik", "Diğer".
-        4. ÇOK ÖNEMLİ: "toplamTutar" için KESİNLİKLE fişin en altındaki nihai "GENEL TOPLAM", "TOPLAM" veya "ÖDENEN TUTAR" değerini bul. Asla KDV matrahını veya "ARA TOPLAM" değerlerini toplam tutar olarak yazma!
+        2. GİZLİ KURAL: Fişlerdeki ürün isimleri genelde kısaltılmıştır (Örn: "SZM PEY", "DMTZ", "PTTS", "CC COLA"). Sen bir uzmansın; bu kısaltmaları KESİNLİKLE mantıklı, tam ve detaylı ürün isimlerine çevirerek yaz (Örn: "Süzme Peynir", "Domates", "Patates", "Coca Cola"). Asla gördüğün kısaltmayı aynen bırakma, ürünü tahmin edip tam adını yaz!
+        3. FİŞİN GENEL KATEGORİSİ ("kategori" alanı) sadece şunlardan biri olabilir: Market, Kafe, Alışveriş, Teknoloji, Abonelik, Gıda, Temizlik, Giyim, Eğlence, Sağlık, Diğer.
+        4. ÜRÜNLERİN KENDİ KATEGORİSİ (urunler içindeki "kategori" alanı) KESİNLİKLE sadece şu listedekilerden biri olmalıdır: "Sebze/Meyve", "Temizlik", "Atıştırmalık/İçecek", "Temel Gıda", "Kafe/Restoran", "Kozmetik/Kişisel", "Teknoloji", "Giyim", "Abonelik", "Diğer".
+        5. ÇOK ÖNEMLİ: "toplamTutar" için KESİNLİKLE fişin en altındaki nihai "GENEL TOPLAM", "TOPLAM" veya "ÖDENEN TUTAR" değerini bul. Asla KDV matrahını veya "ARA TOPLAM" değerlerini toplam tutar olarak yazma!
 
         Format:
         {
@@ -135,6 +166,8 @@ export default function KameraScreen() {
       const cleanBase64 = base64Image.replace(/^data:image\/\w+;base64,/, "");
 
       let secilenModel = hazirModel;
+
+      setIslemDurumu("Fiş okunuyor...");
       let response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${secilenModel}:generateContent?key=${GEMINI_API_KEY}`,
         {
@@ -217,14 +250,15 @@ export default function KameraScreen() {
 
       router.replace("/fisdogrulama");
     } catch (error: any) {
-      console.error("Yapay Zeka Hatası:", error.message);
+      console.log("Yapay Zeka Hatası:", error.message);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
 
       setHataMesaji(
         error.message.includes("fiş veya fatura")
           ? "Bu görsel bir fişe benzemiyor. Lütfen geçerli bir fiş okutun."
-          : error.message.includes("high demand")
-            ? "Şu an Yapay Zeka sunucuları aşırı yoğun. Lütfen 5-10 saniye sonra tekrar çekim yapın."
+          : error.message.includes("high demand") ||
+              error.message.includes("quota")
+            ? "Şu an Yapay Zeka sunucuları aşırı yoğun veya kota dolu. Lütfen 15 saniye sonra tekrar çekim yapın."
             : `Okuma başarısız: İnternet bağlantınızı kontrol edin.`,
       );
       setHataModalAcik(true);
@@ -236,7 +270,7 @@ export default function KameraScreen() {
         urunler: [],
       });
     } finally {
-      setIsProcessing(false);
+      setIslemDurumu("");
     }
   };
 
@@ -245,12 +279,11 @@ export default function KameraScreen() {
     let result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
       allowsEditing: true,
-      quality: 0.6,
-      base64: true,
+      quality: 0.8,
     });
 
-    if (!result.canceled && result.assets[0].base64) {
-      await yapayZekayaGonder(result.assets[0].base64);
+    if (!result.canceled && result.assets[0].uri) {
+      await resmiIsleVeGonder(result.assets[0].uri);
     }
   };
 
@@ -258,19 +291,18 @@ export default function KameraScreen() {
     if (cameraRef.current && !isProcessing) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       try {
-        setIsProcessing(true);
+        setIslemDurumu("Kamera odaklanıyor...");
         const photo = await cameraRef.current.takePictureAsync({
-          quality: 0.6,
-          base64: true,
+          quality: 0.8,
           shutterSound: false,
         });
 
-        if (photo.base64) {
-          await yapayZekayaGonder(photo.base64);
+        if (photo.uri) {
+          await resmiIsleVeGonder(photo.uri);
         }
       } catch (e) {
         console.error("Çekim hatası:", e);
-        setIsProcessing(false);
+        setIslemDurumu("");
       }
     }
   };
@@ -348,9 +380,7 @@ export default function KameraScreen() {
         />
         <View style={styles.rozetKapsayici}>
           <Text style={styles.rozetMetin}>
-            {isProcessing
-              ? "Yapay Zeka Analiz Ediyor..."
-              : "Otomatik Algılama Hazır"}
+            {isProcessing ? islemDurumu : "Otomatik Algılama Hazır"}
           </Text>
         </View>
       </View>

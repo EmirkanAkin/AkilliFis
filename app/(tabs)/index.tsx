@@ -45,22 +45,71 @@ const kisaTarihFormati = (tarihStr: string) => {
   return tarihStr;
 };
 
-const getMarkaRengi = (markaAd: string) => {
-  if (!markaAd) return "#1DB954";
-  const m = markaAd.toLowerCase();
-  if (m.includes("trendyol") || m.includes("a101")) return "#FF6000";
+// 🌟 HİBRİT RENK MOTORU 🌟
+const getMagazaRengi = (magazaAdi: string) => {
+  if (!magazaAdi) return "#1DB954";
+
+  const m = magazaAdi.toLowerCase().trim();
+
+  // 1. ADIM: TÜRKİYE'NİN EN POPÜLER 50 MARKASI
+  if (m.includes("a101")) return "#00BFFF";
+  if (m.includes("mavi") || m.includes("lc waikiki") || m.includes("lcw"))
+    return "#0055A4";
+  if (m.includes("vatan") || m.includes("teknosa")) return "#0033A0";
+  if (m.includes("opet") || m.includes("blutv") || m.includes("disney"))
+    return "#00AEEF";
+  if (m.includes("domino")) return "#0055A5";
+
+  if (m.includes("migros") || m.includes("macrocenter")) return "#FF6000";
+  if (m.includes("trendyol") || m.includes("flo")) return "#F27A1A";
+  if (m.includes("hepsiburada") || m.includes("amazon")) return "#FF9900";
+  if (m.includes("popeyes")) return "#E95C24";
+
+  if (m.includes("bim")) return "#E53935";
+  if (m.includes("netflix") || m.includes("youtube")) return "#E50914";
+  if (m.includes("mediamarkt") || m.includes("rossmann") || m.includes("h&m"))
+    return "#DF0000";
+  if (m.includes("yemeksepeti")) return "#EA004B";
+  if (m.includes("kfc") || m.includes("burger king")) return "#D52B1E";
+  if (m.includes("petrol ofisi") || m.includes("shell") || m.includes("total"))
+    return "#ED0000";
+  if (m.includes("n11")) return "#C10015";
+
+  if (m.includes("şok") || m.includes("sok")) return "#FFD700";
+  if (m.includes("mcdonald") || m.includes("mc donald")) return "#FFC72C";
+  if (m.includes("exxen")) return "#F3C72A";
+
+  if (m.includes("starbucks") || m.includes("kahve dünyası")) return "#00704A";
+  if (m.includes("spotify")) return "#1DB954";
+  if (m.includes("tarım kredi")) return "#2E7D32";
+  if (m.includes("bp")) return "#009900";
+  if (m.includes("çiçeksepeti")) return "#7DB83C";
+
+  if (m.includes("getir")) return "#5D00D2";
+  if (m.includes("gratis") || m.includes("watsons")) return "#6A1B9A";
+
   if (
-    m.includes("bim") ||
-    m.includes("netflix") ||
-    m.includes("mediamarkt") ||
-    m.includes("youtube")
+    m.includes("zara") ||
+    m.includes("boyner") ||
+    m.includes("koton") ||
+    m.includes("sephora")
   )
-    return "#D62828";
-  if (m.includes("getir") || m.includes("carrefour") || m.includes("watsons"))
-    return "#5D00D2";
-  if (m.includes("starbucks") || m.includes("kahve")) return "#00704A";
-  if (m.includes("migros") || m.includes("spotify")) return "#1DB954";
-  return "#1DB954";
+    return "#212121";
+  if (m.includes("apple") || m.includes("steam")) return "#171A21";
+
+  // 2. ADIM: AKILLI HASH (BİLİNMEYEN MARKALAR)
+  let hash = 0;
+  for (let i = 0; i < magazaAdi.length; i++) {
+    hash = magazaAdi.charCodeAt(i) + ((hash << 5) - hash);
+  }
+
+  let color = "#";
+  for (let i = 0; i < 3; i++) {
+    let value = (hash >> (i * 8)) & 0xff;
+    color += ("00" + value.toString(16)).substr(-2);
+  }
+
+  return color + "E6";
 };
 
 export default function HomeScreen() {
@@ -80,7 +129,6 @@ export default function HomeScreen() {
   let buAyHarcama = 0;
   let gecenAyHarcama = 0;
 
-  // tumFisler zaten sıralı ve hazır geliyor, sadece hesaplama yapıyoruz
   tumFisler.forEach((h) => {
     const dateObj = parseTarih(h.tarih);
     const hAy = dateObj.getMonth();
@@ -137,8 +185,10 @@ export default function HomeScreen() {
     if (!silinecekFisId) return;
     setSiliyor(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+
     try {
       await deleteDoc(doc(db, "Fisler", silinecekFisId));
+
       const q = query(
         collection(db, "Urunler"),
         where("fis_id", "==", silinecekFisId),
@@ -150,7 +200,6 @@ export default function HomeScreen() {
       await Promise.all(silmeIslemleri);
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      // Firebase güncellendiğinde _layout.tsx bunu algılayıp tumFisler'i kendi yenileyecek.
     } catch (error) {
       console.error(error);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -161,7 +210,6 @@ export default function HomeScreen() {
     }
   };
 
-  // Sadece ilk açılışta _layout verileri çekerken bu görünür.
   if (!isFislerLoaded) {
     return (
       <View
@@ -206,8 +254,19 @@ export default function HomeScreen() {
           </View>
           <Text style={styles.altAciklama}>Bu ay harcanan toplam tutar</Text>
           <View style={styles.progresMetinKutusu}>
-            <Text style={styles.progresYuzde}>
-              BÜTÇENİN %{Math.min(Math.round(dolulukYuzdesi), 100)}'Sİ
+            <Text
+              style={[
+                styles.progresYuzde,
+                {
+                  color:
+                    dolulukYuzdesi > 100
+                      ? "#FF4B4B"
+                      : "rgba(255, 255, 255, 0.50)",
+                },
+              ]}
+            >
+              {dolulukYuzdesi > 100 ? "BÜTÇE AŞILDI" : "KULLANILAN BÜTÇE"} %
+              {Math.round(dolulukYuzdesi)}
             </Text>
             <Text style={styles.progresLimit}>{butce} TL bütçe</Text>
           </View>
@@ -351,7 +410,8 @@ export default function HomeScreen() {
             </View>
           ) : (
             tumFisler.slice(0, 5).map((item) => {
-              const markaRengi = getMarkaRengi(item.magaza_adi);
+              const markaRengi = getMagazaRengi(item.magaza_adi); // Rengi motordan çek
+
               return (
                 <TouchableOpacity
                   key={item.id}
