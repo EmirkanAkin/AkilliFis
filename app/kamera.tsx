@@ -1,7 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as Haptics from "expo-haptics";
-import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
@@ -17,12 +16,14 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+// 🚀 YENİ: ML Kit Cihaz İçi Okuyucu (İnternetsiz çalışır)
+import TextRecognition from "@react-native-ml-kit/text-recognition";
 
 import { useStore } from "../store/useStore";
 
 const { width } = Dimensions.get("window");
 
-// ŞİFREN BURADA
+// GEMINI ŞİFREN
 const GEMINI_API_KEY = "AIzaSyChRJhb0E4G6j0ZqVwN238af5C2gEMyR60".trim();
 
 const metniDuzenle = (metin: string) => {
@@ -30,59 +31,22 @@ const metniDuzenle = (metin: string) => {
   return metin
     .toLocaleLowerCase("tr-TR")
     .split(" ")
-    .map(
-      (kelime) => kelime.charAt(0).toLocaleUpperCase("tr-TR") + kelime.slice(1),
-    )
+    .map((k) => k.charAt(0).toLocaleUpperCase("tr-TR") + k.slice(1))
     .join(" ");
 };
 
 export default function KameraScreen() {
   const router = useRouter();
   const scanAnim = useRef(new Animated.Value(0)).current;
-
   const [permission, requestPermission] = useCameraPermissions();
   const [flash, setFlash] = useState<"off" | "on">("off");
   const cameraRef = useRef<any>(null);
 
   const [islemDurumu, setIslemDurumu] = useState("");
   const isProcessing = islemDurumu !== "";
-
   const [hataModalAcik, setHataModalAcik] = useState(false);
   const [hataMesaji, setHataMesaji] = useState("");
-
   const { setTempFis } = useStore();
-
-  const [hazirModel, setHazirModel] = useState("gemini-1.5-flash-latest");
-
-  useEffect(() => {
-    const modeliHazirla = async () => {
-      try {
-        const modelsReq = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}`,
-        );
-        const modelsData = await modelsReq.json();
-
-        if (modelsData && modelsData.models) {
-          const acikModeller = modelsData.models.map((m: any) =>
-            m.name.replace("models/", ""),
-          );
-
-          if (acikModeller.includes("gemini-1.5-flash"))
-            setHazirModel("gemini-1.5-flash");
-          else if (acikModeller.includes("gemini-1.5-flash-latest"))
-            setHazirModel("gemini-1.5-flash-latest");
-          else if (acikModeller.includes("gemini-1.5-pro"))
-            setHazirModel("gemini-1.5-pro");
-          else setHazirModel(acikModeller[0]);
-        }
-      } catch (e) {
-        console.log(
-          "Arka plan model çekimi başarısız, varsayılan kullanılacak.",
-        );
-      }
-    };
-    modeliHazirla();
-  }, []);
 
   useEffect(() => {
     Animated.loop(
@@ -103,125 +67,83 @@ export default function KameraScreen() {
     ).start();
   }, [scanAnim]);
 
-  const resmiIsleVeGonder = async (uri: string) => {
+  // 🚀 ADIM 1: CİHAZ İÇİ (ÜCRETSİZ) OCR OKUMA
+  const resmiOkuVeYapayZekayaVer = async (uri: string) => {
     try {
-      setIslemDurumu("Görüntü optimize ediliyor...");
+      setIslemDurumu("Fiş taranıyor (ML Kit)...");
 
-      const manipResult = await ImageManipulator.manipulateAsync(
-        uri,
-        [{ resize: { width: 800 } }],
-        {
-          compress: 0.6,
-          format: ImageManipulator.SaveFormat.JPEG,
-          base64: true,
-        },
-      );
+      // Fotoğrafı Google'a yollamıyoruz, telefonun kendi işlemcisi okuyor! (0 MB internet)
+      const result = await TextRecognition.recognize(uri);
+      const okunanMetin = result.text;
 
-      if (manipResult.base64) {
-        await yapayZekayaGonder(manipResult.base64);
-      } else {
-        throw new Error("Görüntü işlenemedi.");
+      if (!okunanMetin || okunanMetin.trim().length < 10) {
+        throw new Error("Fiş üzerinde okunabilir bir metin bulunamadı.");
       }
-    } catch (e) {
-      console.log("Sıkıştırma Hatası:", e);
-      setHataMesaji("Görüntü işlenirken bir hata oluştu.");
+
+      // Okunan metni alıp hafif bir paket olarak Gemini'a yolluyoruz
+      await yapayZekayaMetinGonder(okunanMetin);
+    } catch (e: any) {
+      console.log("Cihaz İçi Okuma Hatası:", e);
+      setHataMesaji(
+        "Görüntüden metin çıkarılamadı. Lütfen net bir fotoğraf çekin.",
+      );
       setHataModalAcik(true);
       setIslemDurumu("");
     }
   };
 
-  const yapayZekayaGonder = async (base64Image: string) => {
-    setIslemDurumu("Sunucuya iletiliyor...");
+  // 🚀 ADIM 2: SADECE METNİ (TEXT) YAPAY ZEKAYA GÖNDERME (Hızlı ve Düşük Token)
+  const yapayZekayaMetinGonder = async (hamMetin: string) => {
+    setIslemDurumu("Yapay Zeka düzenliyor...");
+
     try {
       const prompt = `
-        Sen uzman bir fiş ve fatura okuma yapay zekasısın.
-        DİKKAT: Eğer gönderilen görsel bir fiş, fatura veya adisyon DEĞİLSE (Örn: manzara, insan, boş bir masa resmi vb.), BANA SADECE ŞU JSON'U DÖNDÜR:
-        {"hata": "Bu bir fiş değil"}
-        
-        Eğer görsel bir fiş ise, görseli analiz et ve BANA SADECE AŞAĞIDAKİ JSON FORMATINDA CEVAP VER. Başka hiçbir kelime kullanma.
-        
-        KURALLAR:
-        1. "magazaAdi" ve ürün isimlerini "Title Case" formatında düzelt. (Örn: "MİGROS T.A.Ş" yerine "Migros").
-        2. GİZLİ KURAL: Fişlerdeki ürün isimleri genelde kısaltılmıştır (Örn: "SZM PEY", "DMTZ", "PTTS", "CC COLA"). Sen bir uzmansın; bu kısaltmaları KESİNLİKLE mantıklı, tam ve detaylı ürün isimlerine çevirerek yaz (Örn: "Süzme Peynir", "Domates", "Patates", "Coca Cola"). Asla gördüğün kısaltmayı aynen bırakma, ürünü tahmin edip tam adını yaz!
-        3. FİŞİN GENEL KATEGORİSİ ("kategori" alanı) sadece şunlardan biri olabilir: Market, Kafe, Alışveriş, Teknoloji, Abonelik, Gıda, Temizlik, Giyim, Eğlence, Sağlık, Diğer.
-        4. ÜRÜNLERİN KENDİ KATEGORİSİ (urunler içindeki "kategori" alanı) KESİNLİKLE sadece şu listedekilerden biri olmalıdır: "Sebze/Meyve", "Temizlik", "Atıştırmalık/İçecek", "Temel Gıda", "Kafe/Restoran", "Kozmetik/Kişisel", "Teknoloji", "Giyim", "Abonelik", "Diğer".
-        5. ÇOK ÖNEMLİ: "toplamTutar" için KESİNLİKLE fişin en altındaki nihai "GENEL TOPLAM", "TOPLAM" veya "ÖDENEN TUTAR" değerini bul. Asla KDV matrahını veya "ARA TOPLAM" değerlerini toplam tutar olarak yazma!
+        Sen bir fiş analiz uzmanısın. Sana bir OCR yazılımından (ML Kit) çıkmış, satırları ve düzeni karışmış olabilecek HAM bir fiş metni veriyorum.
+        Bir dedektif gibi davran, bu metni analiz et ve KESİNLİKLE aşağıdaki JSON formatında geri döndür.
+        Eğer metin bir fiş, fatura veya adisyona ait değilse, SADECE {"hata": "Bu bir fiş değil"} döndür.
 
-        Format:
+        KURALLAR:
+        1. "magazaAdi" ve ürün isimlerini "Title Case" yap.
+        2. Kısaltmaları (Örn: SZM PEY -> Süzme Peynir) mantıklı bir şekilde uzat.
+        3. FİŞ KATEGORİSİ: Market, Kafe, Alışveriş, Teknoloji, Abonelik, Gıda, Temizlik, Giyim, Eğlence, Sağlık, Diğer.
+        4. ÜRÜN KATEGORİSİ: "Sebze/Meyve", "Temizlik", "Atıştırmalık/İçecek", "Temel Gıda", "Kafe/Restoran", "Kozmetik/Kişisel", "Teknoloji", "Giyim", "Abonelik", "Diğer".
+        5. TOPLAM TUTAR: KDV veya Ara Toplamı alma. Fişin en altındaki nihai "GENEL TOPLAM", "TOPLAM" veya "KREDİ KARTI" çekim değerini bul.
+
+        HAM OCR METNİ AŞAĞIDADIR:
+        """
+        ${hamMetin}
+        """
+
+        Beklenen JSON Formatı:
         {
           "magazaAdi": "Mağaza Adı",
           "tarih": "DD.MM.YYYY",
           "toplamTutar": 150.50,
           "kategori": "Market",
           "urunler": [
-            {
-              "ad": "Ürün 1",
-              "fiyat": 50.25,
-              "kategori": "Atıştırmalık/İçecek"
-            }
+            { "ad": "Ürün 1", "fiyat": 50.25, "kategori": "Temel Gıda" }
           ]
         }
       `;
 
-      const cleanBase64 = base64Image.replace(/^data:image\/\w+;base64,/, "");
-
-      let secilenModel = hazirModel;
-
-      setIslemDurumu("Fiş okunuyor...");
-      let response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${secilenModel}:generateContent?key=${GEMINI_API_KEY}`,
+      // 🚨 DİKKAT: Artık fotoğraf yollamıyoruz, sadece prompt yolluyoruz! Hızı sen düşün.
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  { text: prompt },
-                  { inlineData: { mimeType: "image/jpeg", data: cleanBase64 } },
-                ],
-              },
-            ],
+            contents: [{ parts: [{ text: prompt }] }],
           }),
         },
       );
 
-      let result = await response.json();
-
-      if (!response.ok && result.error?.message?.includes("high demand")) {
-        console.log("Ana model yoğun, yedek modele (flash-8b) geçiliyor...");
-        secilenModel = "gemini-1.5-flash-8b";
-        response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${secilenModel}:generateContent?key=${GEMINI_API_KEY}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              contents: [
-                {
-                  parts: [
-                    { text: prompt },
-                    {
-                      inlineData: { mimeType: "image/jpeg", data: cleanBase64 },
-                    },
-                  ],
-                },
-              ],
-            }),
-          },
-        );
-        result = await response.json();
-      }
+      const result = await response.json();
 
       if (!response.ok)
-        throw new Error(
-          result.error?.message || "Google API bağlantıyı reddetti.",
-        );
-      if (!result.candidates || result.candidates.length === 0)
-        throw new Error("Metin bulunamadı.");
+        throw new Error(result.error?.message || "Bağlantı hatası");
 
       let aiText = result.candidates[0].content.parts[0].text;
-
       const jsonMatch = aiText.match(/\{[\s\S]*\}/);
       if (!jsonMatch) throw new Error("Geçerli bir JSON formatı dönmedi.");
 
@@ -231,35 +153,28 @@ export default function KameraScreen() {
         throw new Error("Görselde geçerli bir fiş veya fatura bulunamadı.");
       }
 
-      const duzenlenmisUrunler = (parsedData.urunler || []).map(
-        (urun: any) => ({
-          ...urun,
-          ad: metniDuzenle(urun.ad || "Bilinmeyen Ürün"),
-        }),
-      );
-
       setTempFis({
         magazaAdi: metniDuzenle(parsedData.magazaAdi || "Bilinmiyor"),
         tarih: parsedData.tarih || "",
         toplamTutar: parsedData.toplamTutar || 0,
-        kategori: parsedData.kategori || parsedData.fisKategorisi || "Diğer",
-        urunler: duzenlenmisUrunler,
+        kategori: parsedData.kategori || "Diğer",
+        urunler: (parsedData.urunler || []).map((u: any) => ({
+          ...u,
+          ad: metniDuzenle(u.ad),
+        })),
       });
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-
       router.replace("/fisdogrulama");
     } catch (error: any) {
       console.log("Yapay Zeka Hatası:", error.message);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-
       setHataMesaji(
         error.message.includes("fiş veya fatura")
           ? "Bu görsel bir fişe benzemiyor. Lütfen geçerli bir fiş okutun."
-          : error.message.includes("high demand") ||
-              error.message.includes("quota")
-            ? "Şu an Yapay Zeka sunucuları aşırı yoğun veya kota dolu. Lütfen 15 saniye sonra tekrar çekim yapın."
-            : `Okuma başarısız: İnternet bağlantınızı kontrol edin.`,
+          : error.message.includes("quota")
+            ? "Google İstek (RPM) kotanız doldu. Lütfen 30 saniye bekleyin."
+            : `Çözümleme başarısız: (${error.message})`,
       );
       setHataModalAcik(true);
       setTempFis({
@@ -278,13 +193,10 @@ export default function KameraScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     let result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
-      allowsEditing: true,
       quality: 0.8,
     });
-
-    if (!result.canceled && result.assets[0].uri) {
-      await resmiIsleVeGonder(result.assets[0].uri);
-    }
+    if (!result.canceled && result.assets[0].uri)
+      await resmiOkuVeYapayZekayaVer(result.assets[0].uri);
   };
 
   const fotografCek = async () => {
@@ -296,36 +208,27 @@ export default function KameraScreen() {
           quality: 0.8,
           shutterSound: false,
         });
-
-        if (photo.uri) {
-          await resmiIsleVeGonder(photo.uri);
-        }
+        if (photo.uri) await resmiOkuVeYapayZekayaVer(photo.uri);
       } catch (e) {
-        console.error("Çekim hatası:", e);
         setIslemDurumu("");
       }
     }
   };
 
   if (!permission) return <View style={styles.anaEkran} />;
-
-  if (!permission.granted) {
+  if (!permission.granted)
     return (
       <View
         style={[
           styles.anaEkran,
-          { justifyContent: "center", alignItems: "center", padding: 20 },
+          { justifyContent: "center", alignItems: "center" },
         ]}
       >
-        <Text style={{ color: "white", textAlign: "center", marginBottom: 20 }}>
-          Kamera izni olmadan fişleri tarayamayız.
-        </Text>
         <TouchableOpacity style={styles.izinButon} onPress={requestPermission}>
-          <Text style={{ color: "white", fontWeight: "700" }}>İzin Ver</Text>
+          <Text style={{ color: "white" }}>İzin Ver</Text>
         </TouchableOpacity>
       </View>
     );
-  }
 
   return (
     <View style={styles.anaEkran}>
@@ -335,7 +238,6 @@ export default function KameraScreen() {
         enableTorch={flash === "on"}
         ref={cameraRef}
       />
-
       <View style={styles.ustBar}>
         <TouchableOpacity
           style={styles.ikonButon}
@@ -343,20 +245,20 @@ export default function KameraScreen() {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             router.back();
           }}
+          disabled={isProcessing}
         >
           <Ionicons name="close" size={24} color="white" />
         </TouchableOpacity>
-
         <View style={styles.baslikKutu}>
           <Text style={styles.baslikMetin}>Fiş Tarayıcı</Text>
         </View>
-
         <TouchableOpacity
           style={styles.ikonButon}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             setFlash((f) => (f === "off" ? "on" : "off"));
           }}
+          disabled={isProcessing}
         >
           <Ionicons
             name={flash === "on" ? "flash" : "flash-off-outline"}
@@ -369,7 +271,6 @@ export default function KameraScreen() {
       <Text style={styles.bilgiMetin}>
         Fiş veya faturayı çerçeve içine hizalayın
       </Text>
-
       <View style={styles.vizorKapsayici}>
         <View style={[styles.kose, styles.koseSolUst]} />
         <View style={[styles.kose, styles.koseSagUst]} />
@@ -385,12 +286,6 @@ export default function KameraScreen() {
         </View>
       </View>
 
-      <View style={styles.altBilgiKapsayici}>
-        <Text style={styles.altBilgiMetin}>
-          Işığı iyi olan bir ortamda çekim yapın
-        </Text>
-      </View>
-
       <LinearGradient
         colors={["transparent", "rgba(0,0,0,0.8)", "#000000"]}
         style={styles.altKontrolBari}
@@ -402,7 +297,6 @@ export default function KameraScreen() {
         >
           <Ionicons name="image-outline" size={24} color="white" />
         </TouchableOpacity>
-
         <TouchableOpacity
           style={styles.cekimButonu}
           activeOpacity={0.8}
@@ -417,7 +311,6 @@ export default function KameraScreen() {
             )}
           </View>
         </TouchableOpacity>
-
         <TouchableOpacity
           style={styles.manuelButon}
           onPress={() => {
@@ -430,7 +323,6 @@ export default function KameraScreen() {
         </TouchableOpacity>
       </LinearGradient>
 
-      {/* KARİZMATİK KOYU TEMA HATA MODALI */}
       <Modal visible={hataModalAcik} transparent={true} animationType="fade">
         <View style={styles.hataModalArkaPlan}>
           <View style={styles.hataModalKutu}>
@@ -439,7 +331,6 @@ export default function KameraScreen() {
             </View>
             <Text style={styles.hataBaslik}>Sistem Uyarısı</Text>
             <Text style={styles.hataMesajiMetni}>{hataMesaji}</Text>
-
             <View style={styles.hataButonlarKapsayici}>
               <TouchableOpacity
                 style={styles.hataKapatButon}
@@ -448,17 +339,7 @@ export default function KameraScreen() {
                   setHataModalAcik(false);
                 }}
               >
-                <Text style={styles.hataKapatButonMetin}>Tekrar Dene</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.hataManuelButon}
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  setHataModalAcik(false);
-                  router.push("/manuelfis");
-                }}
-              >
-                <Text style={styles.hataManuelButonMetin}>Manuel Ekle</Text>
+                <Text style={styles.hataKapatButonMetin}>Tamam</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -468,6 +349,7 @@ export default function KameraScreen() {
   );
 }
 
+// Stillerin geri kalanı aynı
 const styles = StyleSheet.create({
   anaEkran: { flex: 1, backgroundColor: "#0A0A0A" },
   izinButon: {
@@ -694,13 +576,4 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255, 255, 255, 0.2)",
   },
   hataKapatButonMetin: { color: "white", fontSize: 15, fontWeight: "700" },
-  hataManuelButon: {
-    width: "100%",
-    height: 50,
-    backgroundColor: "#1DB954",
-    borderRadius: 14,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  hataManuelButonMetin: { color: "white", fontSize: 15, fontWeight: "700" },
 });
