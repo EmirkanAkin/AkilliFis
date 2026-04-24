@@ -17,6 +17,7 @@ import {
   View,
 } from "react-native";
 import { Calendar, LocaleConfig } from "react-native-calendars";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 // FİREBASE BAĞLANTILARI
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
@@ -91,12 +92,12 @@ const getYerelMaxTarih = () => {
 
 export default function ManuelEkleScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const magazaRef = useRef<TextInput>(null);
   const miktarRef = useRef<TextInput>(null);
 
   const [yukleniyor, setYukleniyor] = useState(false);
-
   const [magaza, setMagaza] = useState("");
   const [miktar, setMiktar] = useState("");
   const [odaklananKutu, setOdaklananKutu] = useState<
@@ -136,7 +137,6 @@ export default function ManuelEkleScreen() {
     setSeciliTarihISO(day.dateString);
     const noktali = day.dateString.split("-").reverse().join(".");
     setSeciliTarihNoktali(noktali);
-
     const secilenTarihObj = new Date(day.timestamp);
     const aylar = [
       "Oca",
@@ -200,7 +200,6 @@ export default function ManuelEkleScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const yeniUrunler = urunler.filter((_, i) => i !== index);
     setUrunler(yeniUrunler);
-
     const toplam = yeniUrunler.reduce(
       (acc, u) => acc + Number(u.fiyat.replace(/\./g, "")),
       0,
@@ -224,7 +223,6 @@ export default function ManuelEkleScreen() {
       const aktifUid = auth.currentUser?.uid;
       if (!aktifUid) return;
       const asilToplam = Number(miktar.replace(/\./g, ""));
-
       const fisRef = await addDoc(collection(db, "Fisler"), {
         kullanici_id: aktifUid,
         magaza_adi: magaza.trim(),
@@ -233,7 +231,6 @@ export default function ManuelEkleScreen() {
         kategori: kategori,
         olusturulma_tarihi: serverTimestamp(),
       });
-
       if (urunler.length > 0) {
         const urunKayitIslemleri = urunler.map((urun) =>
           addDoc(collection(db, "Urunler"), {
@@ -254,7 +251,6 @@ export default function ManuelEkleScreen() {
           kullanici_id: aktifUid,
         });
       }
-
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.push("/(tabs)");
     } catch (error) {
@@ -499,7 +495,6 @@ export default function ManuelEkleScreen() {
                 onChangeText={(t) => setYeniUrunFiyat(t.replace(/[^0-9]/g, ""))}
                 cursorColor="#1DB954"
               />
-
               <TouchableOpacity
                 onPress={() => {
                   Keyboard.dismiss();
@@ -524,7 +519,6 @@ export default function ManuelEkleScreen() {
                   color={KATEGORI_AYARLARI[yeniUrunKategori]?.renk || "#8B5CF6"}
                 />
               </TouchableOpacity>
-
               <TouchableOpacity
                 style={styles.yeniUrunEkleBtn}
                 onPress={urunEkle}
@@ -590,7 +584,12 @@ export default function ManuelEkleScreen() {
           <View style={{ height: 40 }} />
         </ScrollView>
 
-        <View style={styles.altButonlarKapsayici}>
+        <View
+          style={[
+            styles.altButonlarKapsayici,
+            { paddingBottom: Math.max(20, insets.bottom + 10) },
+          ]}
+        >
           <TouchableOpacity
             style={[styles.kaydetButon, !formDolu && styles.kaydetButonPasif]}
             activeOpacity={0.8}
@@ -613,6 +612,7 @@ export default function ManuelEkleScreen() {
         </View>
       </KeyboardAvoidingView>
 
+      {/* TAKVİM MODALI (Bunda dinamikliğe gerek yok tam ortada duruyor) */}
       <Modal
         visible={tarihGoster}
         transparent={true}
@@ -668,7 +668,12 @@ export default function ManuelEkleScreen() {
           style={styles.kategoriModalArkaPlan}
           behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
-          <View style={styles.modalKutu}>
+          <View
+            style={[
+              styles.modalKutu,
+              { paddingBottom: Math.max(40, insets.bottom + 20) },
+            ]}
+          >
             <View style={styles.modalUstBar}>
               <Text style={styles.modalBaslik}>
                 {aktifKategoriSecimi === "fis"
@@ -701,7 +706,6 @@ export default function ManuelEkleScreen() {
                   aktifKat = urunler[aktifKategoriSecimi]?.kategori;
 
                 const isAktif = aktifKat === kat;
-
                 return (
                   <TouchableOpacity
                     key={index}
@@ -891,7 +895,7 @@ const styles = StyleSheet.create({
   },
   altButonlarKapsayici: {
     paddingHorizontal: 20,
-    paddingVertical: 20,
+    paddingTop: 20,
     borderTopWidth: 1,
     borderTopColor: "rgba(255, 255, 255, 0.08)",
   },
@@ -935,7 +939,6 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
-    paddingBottom: 40,
     maxHeight: "80%",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.1)",

@@ -538,7 +538,6 @@ const styles = StyleSheet.create({
   },
   isimVurgu: { color: "#1DB954" },
 
-  // 🚀 BURASI DEĞİŞTİ: flexGrow ve justifyContent eklendi
   scrollIcerikBos: { flexGrow: 1, paddingTop: 60, paddingBottom: 40 },
   ortaIcerikBos: { flex: 1, alignItems: "center", justifyContent: "center" },
 

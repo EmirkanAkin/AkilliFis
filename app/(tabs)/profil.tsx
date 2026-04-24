@@ -16,6 +16,7 @@ import {
 import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -24,14 +25,14 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   View,
 } from "react-native";
-import { auth, db } from "../../firebaseConfig";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-// ZUSTAND (BEYİN)
+import { auth, db } from "../../firebaseConfig";
 import { useStore } from "../../store/useStore";
 
-// TARİH FORMATLAMA ("DD.MM.YYYY" -> Date)
 const parseTarih = (tarihStr: string) => {
   if (!tarihStr) return new Date();
   const parts = tarihStr.split(".");
@@ -43,7 +44,7 @@ const parseTarih = (tarihStr: string) => {
 
 export default function ProfilScreen() {
   const router = useRouter();
-
+  const insets = useSafeAreaInsets();
   const { isim, butce, uid, sistemiSifirla } = useStore();
 
   const [yukleniyor, setYukleniyor] = useState(true);
@@ -55,6 +56,7 @@ export default function ProfilScreen() {
   const [feedbackMesaj, setFeedbackMesaj] = useState("");
   const [feedbackGonderiliyor, setFeedbackGonderiliyor] = useState(false);
 
+  // BAŞARI MODALI İÇİN STATE
   const [basariModalAcik, setBasariModalAcik] = useState(false);
   const [hataUyarisiAcik, setHataUyarisiAcik] = useState(false);
 
@@ -154,13 +156,11 @@ export default function ProfilScreen() {
         for (const doc of urunlerSnap.docs) await deleteDoc(doc.ref);
 
         await deleteDoc(doc(db, "Kullanicilar", aktifUid));
-
         sistemiSifirla();
 
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setSifirlaModalAcik(false);
         setSifirlaniyor(false);
-
         router.replace("/ilkgiris");
       } catch (error) {
         console.error("Sıfırlama Hatası:", error);
@@ -175,7 +175,7 @@ export default function ProfilScreen() {
   const feedbackGonder = async () => {
     if (!feedbackBaslik.trim() || !feedbackMesaj.trim()) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      setHataUyarisiAcik(true); // Eksik bilgi uyarısı için kendi modalımız
+      setHataUyarisiAcik(true);
       return;
     }
 
@@ -220,40 +220,22 @@ export default function ProfilScreen() {
     const markalar = [
       { ad: "Migros", kat: "Market" },
       { ad: "BİM", kat: "Market" },
-      { ad: "A101", kat: "Market" },
       { ad: "Starbucks", kat: "Kafe" },
-      { ad: "Trendyol", kat: "Alışveriş" },
-      { ad: "MediaMarkt", kat: "Teknoloji" },
-      { ad: "Netflix", kat: "Abonelik" },
-      { ad: "Getir", kat: "Market" },
     ];
-
     const urunKatalogu = [
       { ad: "Süt 1L", kat: "Temel Gıda" },
-      { ad: "Ekmek", kat: "Temel Gıda" },
-      { ad: "Domates 1kg", kat: "Sebze/Meyve" },
-      { ad: "Elma", kat: "Sebze/Meyve" },
       { ad: "Filtre Kahve", kat: "Kafe/Restoran" },
-      { ad: "Cips", kat: "Atıştırmalık/İçecek" },
-      { ad: "Çikolata", kat: "Atıştırmalık/İçecek" },
-      { ad: "Deterjan", kat: "Temizlik" },
-      { ad: "Şampuan", kat: "Kozmetik/Kişisel" },
-      { ad: "Tişört", kat: "Giyim" },
-      { ad: "Kulaklık", kat: "Teknoloji" },
-      { ad: "Aylık Üyelik", kat: "Abonelik" },
     ];
 
     try {
       for (let i = 0; i < 30; i++) {
         const randomMarka =
           markalar[Math.floor(Math.random() * markalar.length)];
-
         const rastgeleGunCarpani = Math.floor(Math.random() * 90);
         const date = new Date(
           new Date().getTime() - rastgeleGunCarpani * 24 * 60 * 60 * 1000,
         );
         const formatliTarih = `${String(date.getDate()).padStart(2, "0")}.${String(date.getMonth() + 1).padStart(2, "0")}.${date.getFullYear()}`;
-
         let toplam = 0;
         const urunlerToInsert = [];
         const urunSayisi = Math.floor(Math.random() * 4) + 1;
@@ -264,10 +246,8 @@ export default function ProfilScreen() {
             20 +
             Math.floor(Math.random() * 99) / 100;
           toplam += fiyat;
-
           const secilenUrun =
             urunKatalogu[Math.floor(Math.random() * urunKatalogu.length)];
-
           urunlerToInsert.push({
             urun_adi: secilenUrun.ad,
             fiyat: fiyat,
@@ -285,12 +265,8 @@ export default function ProfilScreen() {
           olusturulma_tarihi: new Date(),
         });
 
-        for (const u of urunlerToInsert) {
-          await addDoc(collection(db, "Urunler"), {
-            fis_id: fisRef.id,
-            ...u,
-          });
-        }
+        for (const u of urunlerToInsert)
+          await addDoc(collection(db, "Urunler"), { fis_id: fisRef.id, ...u });
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       istatistikleriGetir();
@@ -312,7 +288,7 @@ export default function ProfilScreen() {
       ) : (
         <ScrollView
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 100 }}
+          contentContainerStyle={{ paddingBottom: 100 + insets.bottom }}
         >
           <View style={styles.headerKapsayici}>
             <Text style={styles.ustBaslik}>HESABIM</Text>
@@ -439,7 +415,7 @@ export default function ProfilScreen() {
                   />
                 </View>
                 <Text style={styles.menuOgeMetin}>Uygulama Versiyonu</Text>
-                <Text style={styles.menuSagBilgi}>1.0.0 Beta</Text>
+                <Text style={styles.menuSagBilgi}>1.0.0</Text>
               </View>
             </View>
           </View>
@@ -482,7 +458,7 @@ export default function ProfilScreen() {
         </ScrollView>
       )}
 
-      {/* SIFIRLAMA ONAY MODALI */}
+      {/* SIFIRLAMA MODALI */}
       <Modal visible={sifirlaModalAcik} transparent={true} animationType="fade">
         <View style={styles.modalArkaPlan}>
           <View style={styles.modalKutu}>
@@ -494,7 +470,6 @@ export default function ProfilScreen() {
               Tüm fişlerin, harcama geçmişin ve kayıtlı ürünlerin tamamen
               silinecek. Bu işlem geri alınamaz.
             </Text>
-
             <View style={styles.modalButonKapsayici}>
               <TouchableOpacity
                 style={styles.modalIptalButon}
@@ -506,7 +481,6 @@ export default function ProfilScreen() {
               >
                 <Text style={styles.modalIptalMetin}>İptal Et</Text>
               </TouchableOpacity>
-
               <TouchableOpacity
                 style={styles.modalOnayButon}
                 onPress={gercektenSifirla}
@@ -527,16 +501,28 @@ export default function ProfilScreen() {
         visible={feedbackModalAcik}
         transparent={true}
         animationType="slide"
+        onRequestClose={() => setFeedbackModalAcik(false)}
       >
         <KeyboardAvoidingView
           style={styles.feedbackModalArkaPlan}
           behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
-          <View style={styles.feedbackModalKutu}>
-            <View style={styles.tutuamacKapsayici}>
-              <View style={styles.tutuamac} />
-            </View>
+          {/* Boşluğa basınca kapat */}
+          <TouchableWithoutFeedback
+            onPress={() => {
+              Keyboard.dismiss();
+              setFeedbackModalAcik(false);
+            }}
+          >
+            <View style={StyleSheet.absoluteFillObject} />
+          </TouchableWithoutFeedback>
 
+          <View
+            style={[
+              styles.feedbackModalKutu,
+              { paddingBottom: Math.max(25, insets.bottom + 15) },
+            ]}
+          >
             <View
               style={{
                 flexDirection: "row",
@@ -619,17 +605,21 @@ export default function ProfilScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
-      <Modal visible={hataUyarisiAcik} transparent={true} animationType="fade">
+      {/* EKSİK BİLGİ HATA MODALI */}
+      <Modal
+        visible={hataUyarisiAcik}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setHataUyarisiAcik(false)}
+      >
         <View style={styles.modalArkaPlan}>
           <View style={styles.modalKutu}>
-            {/* Sağ Üst Kapatma Çarpısı */}
             <TouchableOpacity
               style={styles.sagUstKapatButonu}
               onPress={() => setHataUyarisiAcik(false)}
             >
               <Ionicons name="close" size={24} color="rgba(255,255,255,0.4)" />
             </TouchableOpacity>
-
             <View style={styles.modalIkonZemin}>
               <Ionicons name="alert-circle" size={32} color="#FF6B6B" />
             </View>
@@ -647,7 +637,13 @@ export default function ProfilScreen() {
         </View>
       </Modal>
 
-      <Modal visible={basariModalAcik} transparent={true} animationType="fade">
+      {/* BAŞARI MODALI */}
+      <Modal
+        visible={basariModalAcik}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setBasariModalAcik(false)}
+      >
         <View style={styles.modalArkaPlan}>
           <View
             style={[
@@ -655,7 +651,6 @@ export default function ProfilScreen() {
               { borderColor: "rgba(29, 185, 84, 0.3)", shadowColor: "#1DB954" },
             ]}
           >
-            {/* Sağ Üst Kapatma Çarpısı */}
             <TouchableOpacity
               style={styles.sagUstKapatButonu}
               onPress={() => {
@@ -665,7 +660,6 @@ export default function ProfilScreen() {
             >
               <Ionicons name="close" size={24} color="rgba(255,255,255,0.4)" />
             </TouchableOpacity>
-
             <View
               style={[
                 styles.modalIkonZemin,
@@ -875,7 +869,6 @@ const styles = StyleSheet.create({
     elevation: 10,
     position: "relative",
   },
-
   sagUstKapatButonu: {
     position: "absolute",
     top: 16,
@@ -893,7 +886,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     borderWidth: 1,
     borderColor: "rgba(255, 107, 107, 0.3)",
-    marginTop: 10, // Çarpı ile çarpışmasın diye
+    marginTop: 10,
   },
   modalBaslik: {
     color: "white",
@@ -943,26 +936,10 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.08)",
     paddingHorizontal: 25,
-    paddingTop: 10,
-    paddingBottom: Platform.OS === "ios" ? 40 : 25,
+    paddingTop: 20,
     elevation: 20,
   },
-  tutuamacKapsayici: {
-    alignItems: "center",
-    marginBottom: 20,
-    paddingVertical: 5,
-  },
-  tutuamac: {
-    width: 40,
-    height: 4,
-    backgroundColor: "rgba(255, 255, 255, 0.15)",
-    borderRadius: 2,
-  },
-  feedbackBaslik: {
-    color: "white",
-    fontSize: 22,
-    fontWeight: "800",
-  },
+  feedbackBaslik: { color: "white", fontSize: 22, fontWeight: "800" },
   feedbackBilgi: {
     color: "rgba(255, 255, 255, 0.5)",
     fontSize: 13,
@@ -987,15 +964,8 @@ const styles = StyleSheet.create({
     fontSize: 15,
     marginBottom: 20,
   },
-  feedbackInputCoklu: {
-    height: 120,
-    paddingTop: 14,
-  },
-  feedbackButonKapsayici: {
-    flexDirection: "row",
-    gap: 12,
-    marginTop: 10,
-  },
+  feedbackInputCoklu: { height: 120, paddingTop: 14 },
+  feedbackButonKapsayici: { flexDirection: "row", gap: 12, marginTop: 10 },
   feedbackIptalButon: {
     flex: 1,
     height: 52,
@@ -1004,11 +974,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  feedbackIptalMetin: {
-    color: "white",
-    fontSize: 15,
-    fontWeight: "600",
-  },
+  feedbackIptalMetin: { color: "white", fontSize: 15, fontWeight: "600" },
   feedbackGonderButon: {
     flex: 2,
     height: 52,
@@ -1017,9 +983,5 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  feedbackGonderMetin: {
-    color: "white",
-    fontSize: 15,
-    fontWeight: "700",
-  },
+  feedbackGonderMetin: { color: "white", fontSize: 15, fontWeight: "700" },
 });

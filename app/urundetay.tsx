@@ -28,6 +28,7 @@ import {
   TouchableWithoutFeedback,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { auth, db } from "../firebaseConfig";
 
 // KATEGORİ AYARLARI
@@ -52,17 +53,16 @@ const KATEGORI_AYARLARI: any = {
 export default function UrunDetayiScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
-
+  const insets = useSafeAreaInsets();
   const [yukleniyor, setYukleniyor] = useState(true);
   const [duzenleModalAcik, setDuzenleModalAcik] = useState(false);
-
   const [fisDetay, setFisDetay] = useState({
     magaza: "Yükleniyor...",
     tarih: "",
     toplam: 0,
   });
-
   const [duzenlenenUrunler, setDuzenlenenUrunler] = useState<any[]>([]);
+
   const [kategoriModalAcik, setKategoriModalAcik] = useState(false);
   const [aktifKategoriSecimi, setAktifKategoriSecimi] = useState<number | null>(
     null,
@@ -78,7 +78,6 @@ export default function UrunDetayiScreen() {
 
   useEffect(() => {
     if (!id) return;
-
     const seciliFisId = Array.isArray(id) ? id[0] : id;
 
     const veriGetir = async () => {
@@ -165,7 +164,7 @@ export default function UrunDetayiScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setMagazaModalAcik(false);
 
-    const seciliFisId = Array.isArray(id) ? id[0] : id; // DÜZELTME
+    const seciliFisId = Array.isArray(id) ? id[0] : id;
 
     try {
       const fisRef = doc(db, "Fisler", seciliFisId);
@@ -190,22 +189,19 @@ export default function UrunDetayiScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setDuzenleModalAcik(false);
     setYukleniyor(true);
-
-    const seciliFisId = Array.isArray(id) ? id[0] : id; // DÜZELTME
+    const seciliFisId = Array.isArray(id) ? id[0] : id;
 
     try {
       const yeniToplam = duzenlenenUrunler.reduce(
         (acc, u) => acc + Number(u.fiyat.replace(",", ".")),
         0,
       );
-
       const fisRef = doc(db, "Fisler", seciliFisId);
       await updateDoc(fisRef, { toplam_tutar: yeniToplam });
 
       const urunlerRef = collection(db, "Urunler");
       const q = query(urunlerRef, where("fis_id", "==", seciliFisId));
       const eskiUrunlerSnap = await getDocs(q);
-
       const silmeIslemleri = eskiUrunlerSnap.docs.map((d) =>
         deleteDoc(doc(db, "Urunler", d.id)),
       );
@@ -230,7 +226,6 @@ export default function UrunDetayiScreen() {
         fiyat: Number(doc.data().fiyat).toFixed(2).replace(".", ","),
         kategori: doc.data().kategori || "Diğer",
       }));
-
       setDuzenlenenUrunler(guncelUrunler);
       setFisDetay((prev) => ({ ...prev, toplam: yeniToplam }));
     } catch (error) {
@@ -249,12 +244,10 @@ export default function UrunDetayiScreen() {
   const gercektenFisiSil = async () => {
     setSiliyor(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-
-    const seciliFisId = Array.isArray(id) ? id[0] : id; // DÜZELTME
+    const seciliFisId = Array.isArray(id) ? id[0] : id;
 
     try {
       await deleteDoc(doc(db, "Fisler", seciliFisId));
-
       const q = query(
         collection(db, "Urunler"),
         where("fis_id", "==", seciliFisId),
@@ -324,7 +317,6 @@ export default function UrunDetayiScreen() {
             <Ionicons name="arrow-back" size={24} color="white" />
           </TouchableOpacity>
           <Text style={styles.sayfaBaslik}>Ürün Detayları</Text>
-
           <TouchableOpacity
             style={[
               styles.silButonUst,
@@ -457,7 +449,6 @@ export default function UrunDetayiScreen() {
                   TL
                 </Text>
               </View>
-
               <View style={styles.urunlerListesi}>
                 {kat.urunler.map((urun: any, index: number) => (
                   <View key={index} style={styles.urunSatiri}>
@@ -481,7 +472,12 @@ export default function UrunDetayiScreen() {
           ))}
         </ScrollView>
 
-        <View style={styles.altButonlarKapsayici}>
+        <View
+          style={[
+            styles.altButonlarKapsayici,
+            { bottom: Math.max(20, insets.bottom + 10) },
+          ]}
+        >
           <TouchableOpacity
             style={styles.altButonTekli}
             activeOpacity={0.7}
@@ -499,17 +495,22 @@ export default function UrunDetayiScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* DÜZENLE MODALI */}
         <Modal
           visible={duzenleModalAcik}
           transparent={true}
           animationType="slide"
+          onRequestClose={() => setDuzenleModalAcik(false)}
         >
           <KeyboardAvoidingView
             style={styles.kategoriModalArkaPlan}
             behavior={Platform.OS === "ios" ? "padding" : "height"}
           >
-            <View style={styles.kategoriModalKutu}>
+            <View
+              style={[
+                styles.kategoriModalKutu,
+                { paddingBottom: Math.max(20, insets.bottom + 10) },
+              ]}
+            >
               <View style={styles.tutuamacKapsayici}>
                 <View style={styles.tutuamac} />
               </View>
@@ -553,7 +554,6 @@ export default function UrunDetayiScreen() {
                         placeholderTextColor="rgba(255,255,255,0.2)"
                       />
                     </View>
-
                     <View
                       style={[
                         styles.urunFiyatInputZemini,
@@ -572,7 +572,6 @@ export default function UrunDetayiScreen() {
                       />
                       <Text style={styles.urunFiyatParaBirimi}>TL</Text>
                     </View>
-
                     <TouchableOpacity
                       onPress={() => {
                         Keyboard.dismiss();
@@ -599,7 +598,6 @@ export default function UrunDetayiScreen() {
                         }
                       />
                     </TouchableOpacity>
-
                     <TouchableOpacity
                       style={styles.urunSilButonu}
                       onPress={() => urunSil(urun.id)}
@@ -612,7 +610,6 @@ export default function UrunDetayiScreen() {
                     </TouchableOpacity>
                   </View>
                 ))}
-
                 <TouchableOpacity
                   style={styles.yeniUrunEkleZemini}
                   activeOpacity={0.7}
@@ -659,7 +656,12 @@ export default function UrunDetayiScreen() {
             style={styles.kategoriModalArkaPlan}
             behavior={Platform.OS === "ios" ? "padding" : "height"}
           >
-            <View style={styles.modalKutu}>
+            <View
+              style={[
+                styles.modalKutu,
+                { paddingBottom: Math.max(20, insets.bottom + 10) },
+              ]}
+            >
               <View style={styles.modalUstBar}>
                 <Text style={styles.modalBaslik}>Ürün Kategorisi Seç</Text>
                 <TouchableOpacity
@@ -685,7 +687,6 @@ export default function UrunDetayiScreen() {
                       ? duzenlenenUrunler[aktifKategoriSecimi]?.kategori
                       : "";
                   const isAktif = aktifKat === kat;
-
                   return (
                     <TouchableOpacity
                       key={index}
@@ -746,8 +747,12 @@ export default function UrunDetayiScreen() {
             >
               <View style={styles.seffafAlan} />
             </TouchableWithoutFeedback>
-
-            <View style={styles.magazaKartIcerik}>
+            <View
+              style={[
+                styles.magazaKartIcerik,
+                { paddingBottom: Math.max(20, insets.bottom + 10) },
+              ]}
+            >
               <View style={styles.tutuamacKapsayici}>
                 <View style={styles.tutuamac} />
               </View>
@@ -772,7 +777,6 @@ export default function UrunDetayiScreen() {
                   />
                 </View>
               </View>
-
               <TouchableOpacity
                 style={[
                   styles.magazaOnaylaButon,
@@ -789,8 +793,12 @@ export default function UrunDetayiScreen() {
         </Modal>
       </View>
 
-      {/* SİLME MODALI */}
-      <Modal visible={silmeModalAcik} transparent={true} animationType="fade">
+      <Modal
+        visible={silmeModalAcik}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setSilmeModalAcik(false)}
+      >
         <View style={styles.silmeModalArkaPlan}>
           <View style={styles.silmeModalKutu}>
             <View style={styles.silmeModalIkonZemin}>
@@ -801,7 +809,6 @@ export default function UrunDetayiScreen() {
               Bu fişi tamamen silmek istediğinize emin misiniz? İşlem geri
               alınamaz.
             </Text>
-
             <View style={styles.silmeModalButonKapsayici}>
               <TouchableOpacity
                 style={styles.silmeModalIptalButon}
@@ -813,7 +820,6 @@ export default function UrunDetayiScreen() {
               >
                 <Text style={styles.silmeModalIptalMetin}>İptal</Text>
               </TouchableOpacity>
-
               <TouchableOpacity
                 style={styles.silmeModalOnayButon}
                 onPress={gercektenFisiSil}
@@ -1031,7 +1037,6 @@ const styles = StyleSheet.create({
   },
   altButonlarKapsayici: {
     position: "absolute",
-    bottom: 20,
     left: 20,
     right: 20,
     justifyContent: "center",
@@ -1065,7 +1070,6 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
-    paddingBottom: 40,
     maxHeight: "85%",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
@@ -1169,7 +1173,6 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: "rgba(255, 255, 255, 0.06)",
     marginTop: 10,
-    marginBottom: Platform.OS === "ios" ? 20 : 10,
   },
   inputHatali: {
     borderColor: "rgba(255, 107, 107, 0.5)",
@@ -1205,7 +1208,6 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
-    paddingBottom: 40,
     maxHeight: "85%",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",

@@ -53,16 +53,27 @@ export default function RootLayout() {
         id: "kamera_ac",
         title: "📸 Hızlı Fiş Tara",
         subtitle: "Kamerayı aç ve anında tara",
-        icon: Platform.OS === "ios" ? "symbol:camera" : "camera",
+        icon: Platform.OS === "ios" ? "symbol:camera" : "ic_menu_camera",
       },
       {
         id: "manuel_ekle",
         title: "✍️ Manuel Ekle",
         subtitle: "El ile harcama gir",
-        icon: Platform.OS === "ios" ? "symbol:square.and.pencil" : "edit",
+        icon:
+          Platform.OS === "ios" ? "symbol:square.and.pencil" : "ic_menu_edit",
       },
     ]);
 
+    const checkInitialAction = async () => {
+      const action = await QuickActions.initial;
+      if (action) {
+        setTimeout(() => {
+          if (action.id === "kamera_ac") router.push("/kamera");
+          if (action.id === "manuel_ekle") router.push("/manuelfis");
+        }, 300);
+      }
+    };
+    checkInitialAction();
     const abonelik = QuickActions.addListener((action) => {
       if (action.id === "kamera_ac") {
         router.push("/kamera");
