@@ -69,20 +69,15 @@ export default function KameraScreen() {
     ).start();
   }, [scanAnim]);
 
-  // Görüntü Optimizasyonu
   const resmiIsleVeGonder = async (uri: string) => {
     try {
       setIslemDurumu("Görüntü optimize ediliyor...");
 
-      const manipResult = await ImageManipulator.manipulateAsync(
-        uri,
-        [{ resize: { width: 1000 } }], // Hız ve Kalite dengesi
-        {
-          compress: 0.65,
-          format: ImageManipulator.SaveFormat.JPEG,
-          base64: true,
-        },
-      );
+      const manipResult = await ImageManipulator.manipulateAsync(uri, [], {
+        compress: 0.7,
+        format: ImageManipulator.SaveFormat.JPEG,
+        base64: true,
+      });
 
       if (manipResult.base64) {
         await yapayZekayaGorselGonder(manipResult.base64);
@@ -99,7 +94,6 @@ export default function KameraScreen() {
 
   // Yapay Zeka API İstek Süreci
   const yapayZekayaGorselGonder = async (base64Image: string) => {
-    // UI İllüzyonu: Kullanıcı deneyimini artırmak için dinamik yükleme metinleri
     const loadingMessages = [
       "Görüntü işleniyor...",
       "Metin karakterleri çözümleniyor...",
@@ -121,36 +115,33 @@ export default function KameraScreen() {
 
     try {
       const prompt = `
-        Sen uzman bir fiş ve fatura okuma yapay zekasısın.
-        Gönderilen görsel bir BİM, A101, Şok vb. market fişi olabilir.
-        
-        🚨 EN SIK YAPTIĞIN HATA VE ÇÖZÜMÜ (BUNU KESİNLİKLE DİKKATE AL):
-        - Fişlerde ürün adları solda, fiyatları ise en sağda (genellikle '*' işaretinden sonra) yer alır. Fiyatları SATIR KAYDIRMADAN tam karşısındaki doğru ürüne ata!
-        - Bazen ürünlerin arasında veya altında "3 ad X 5.00" gibi miktar/çarpım satırları bulunur. Bu satırlar senin kafanı karıştırıp fiyatları yanlış ürüne (örn: Süt yerine altındaki Bisküviye) atamana sebep oluyor. Lütfen satır hizalamasına (hizaya) çok dikkat et ve fiyatları çaprazlama.
+        Sen uzman bir mali müşavir ve fiş/fatura okuma yapay zekasısın.
+        Gönderilen görsel bir Türkiye pazarındaki (BİM, A101, Şok, Migros vb.) pazar/market fişidir.
 
-        DİKKAT: Eğer gönderilen görsel bir fiş, fatura veya adisyon DEĞİLSE, BANA SADECE ŞU JSON'U DÖNDÜR:
+        🚨 ÇOK KRİTİK KURALLAR (YANLIŞ OKUMANI ENGELLEMEK İÇİN):
+        1. FİYAT HİZALAMASI: Fişlerde ürün adları solda, fiyatları ise en sağda yer alır. Fiyatlar genellikle '*' (yıldız) işaretinden sonra yazar (Örn: "*68.50" veya "*218.00"). KDV oranlarını (%1, %20) asla fiyat olarak alma!
+        2. ÇARPIM SATIRLARI (ÇOK ÖNEMLİ): BİM gibi fişlerde "2 ad X 109.00" gibi satırlar bulunur. Bu satırlar ürün DEĞİLDİR! Bu satırın hemen altındaki veya üstündeki ANA ÜRÜNÜ bul ve o ürünün karşısındaki YILDIZLI TOPLAM fiyati (Örn: *218.00) o ürüne ata. 
+        3. EKSİKSİZ LİSTELEME: Fişteki ürünleri ASLA ATLAMADAN, yukarıdan aşağıya sırasıyla çıkar.
+        4. SAHTE ÜRÜNLERİ LİSTELEME: "TOPLAM KDV", "KDV MATRAH", "NAKİT", "KREDİ KARTI", "BANKA KREDİ KARTI", "ARA TOPLAM", "PARA ÜSTÜ", "TEŞEKKÜRLER" gibi yazıları ASLA "urunler" listesine ekleme!
+        5. GENEL TOPLAM: "toplamTutar" için KESİNLİKLE fişin en altındaki nihai "TOPLAM", "GENEL TOPLAM" veya "ÖDENECEK KDV DAHİL TUTAR" değerini bul.
+        6. ASLA TEMBELLİK YAPMA: Fişte ne kadar ürün varsa HİÇBİRİNİ ATLAMADAN eksiksiz yaz. Cevabını asla yarıda kesme!
+
+        DİKKAT: Eğer görsel bir fiş veya fatura DEĞİLSE, SADECE ŞU JSON'U DÖNDÜR:
         {"hata": "Bu bir fiş değil"}
         
-        Eğer görsel bir fiş ise, görseli analiz et ve BANA SADECE AŞAĞIDAKİ JSON FORMATINDA CEVAP VER. Başka hiçbir kelime kullanma.
+        Eğer görsel bir fiş ise, SADECE VE SADECE aşağıdaki JSON formatında cevap ver. Başka tek bir kelime yazma.
         
-        KURALLAR:
-        1. "magazaAdi" ve ürün isimlerini "Title Case" formatında düzelt. (Örn: "MİGROS T.A.Ş" yerine "Migros", "SUT 1L DOST" yerine "Dost Süt 1L").
-        2. KDV tutarlarını, Para Üstü, Nakit gibi ödeme türlerini ASLA ürün olarak ekleme.
-        3. FİŞİN GENEL KATEGORİSİ ("kategori" alanı) sadece şunlardan biri olabilir: Market, Kafe, Alışveriş, Teknoloji, Abonelik, Gıda, Temizlik, Giyim, Eğlence, Sağlık, Diğer.
-        4. ÜRÜNLERİN KENDİ KATEGORİSİ (urunler içindeki "kategori" alanı) KESİNLİKLE sadece şu listedekilerden biri olmalıdır: "Sebze/Meyve", "Temizlik", "Atıştırmalık/İçecek", "Temel Gıda", "Kafe/Restoran", "Kozmetik/Kişisel", "Teknoloji", "Giyim", "Abonelik", "Diğer".
-        5. ÇOK ÖNEMLİ: "toplamTutar" için KESİNLİKLE fişin en altındaki nihai "GENEL TOPLAM", "TOPLAM" veya "ÖDENEN TUTAR" değerini bul. Asla KDV matrahını veya "ARA TOPLAM" değerlerini toplam tutar olarak yazma!
-
         Format:
         {
-          "magazaAdi": "Mağaza Adı",
-          "tarih": "DD.MM.YYYY",
-          "toplamTutar": 150.50,
-          "kategori": "Market",
+          "magazaAdi": "Bim", // (Örn: "BİM BİRLEŞİK MAĞAZALAR" yerine sadece "Bim" yaz)
+          "tarih": "DD.MM.YYYY", // Fişin üzerindeki tarihi bul
+          "toplamTutar": 1109.25, // Tüm fişin net ödenen toplamı
+          "kategori": "Market", // "Market, Kafe, Alışveriş, Teknoloji, Abonelik, Gıda, Temizlik, Giyim, Eğlence, Sağlık, Diğer" arasından seç
           "urunler": [
             {
-              "ad": "Ürün 1",
-              "fiyat": 50.25,
-              "kategori": "Atıştırmalık/İçecek"
+              "ad": "Ceviz İçi 150G Simbat",
+              "fiyat": 218.00,
+              "kategori": "Atıştırmalık/İçecek" // SADECE ŞUNLARDAN BİRİ: "Sebze/Meyve", "Temizlik", "Atıştırmalık/İçecek", "Temel Gıda", "Kafe/Restoran", "Kozmetik/Kişisel", "Teknoloji", "Giyim", "Abonelik", "Diğer"
             }
           ]
         }
@@ -172,6 +163,10 @@ export default function KameraScreen() {
                 ],
               },
             ],
+            generationConfig: {
+              maxOutputTokens: 8192,
+              temperature: 0.1,
+            },
           }),
         },
       );
@@ -232,7 +227,6 @@ export default function KameraScreen() {
         urunler: [],
       });
     } finally {
-      // Bellek sızıntısını önlemek için sayacı mutlaka temizliyoruz
       clearInterval(progressInterval);
       setIslemDurumu("");
     }

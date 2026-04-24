@@ -4,12 +4,15 @@ import {
   DefaultTheme,
   ThemeProvider,
 } from "@react-navigation/native";
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import "react-native-reanimated";
 
+import * as QuickActions from "expo-quick-actions";
 import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
 import { useEffect } from "react";
+import { Platform } from "react-native";
+
 import { auth, db } from "../firebaseConfig";
 import { useStore } from "../store/useStore";
 
@@ -33,6 +36,7 @@ const parseTarih = (tarihStr: string) => {
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+  const router = useRouter();
 
   const {
     uid,
@@ -42,6 +46,33 @@ export default function RootLayout() {
     setIsim,
     setButce,
   } = useStore();
+
+  useEffect(() => {
+    QuickActions.setItems([
+      {
+        id: "kamera_ac",
+        title: "📸 Hızlı Fiş Tara",
+        subtitle: "Kamerayı aç ve anında tara",
+        icon: Platform.OS === "ios" ? "symbol:camera" : "camera",
+      },
+      {
+        id: "manuel_ekle",
+        title: "✍️ Manuel Ekle",
+        subtitle: "El ile harcama gir",
+        icon: Platform.OS === "ios" ? "symbol:square.and.pencil" : "edit",
+      },
+    ]);
+
+    const abonelik = QuickActions.addListener((action) => {
+      if (action.id === "kamera_ac") {
+        router.push("/kamera");
+      } else if (action.id === "manuel_ekle") {
+        router.push("/manuelfis");
+      }
+    });
+
+    return () => abonelik.remove();
+  }, []);
 
   useEffect(() => {
     const aktifUid = uid || auth.currentUser?.uid;
@@ -100,7 +131,7 @@ export default function RootLayout() {
       return () => {
         userUnsub();
         fisUnsub();
-        urunUnsub(); // Aboneliği kapat
+        urunUnsub();
       };
     } else {
       setIsFislerLoaded(true);

@@ -2,6 +2,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -17,6 +18,8 @@ import { useStore } from "../store/useStore";
 
 export default function OnboardingScreen() {
   const router = useRouter();
+
+  const scrollRef = useRef<ScrollView>(null);
 
   const [isim, setIsim] = useState("");
   const globalIsim = useStore((state) => state.isim);
@@ -38,6 +41,32 @@ export default function OnboardingScreen() {
     }
   }, [globalIsim, kayitAsamasinda]);
 
+  useEffect(() => {
+    const showEvent =
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent =
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+    const klavyeAcildi = Keyboard.addListener(showEvent, () => {
+      // Klavye açıldığında ekranın boyuyla oynamadan sadece en alta kaydırır
+      setTimeout(() => {
+        scrollRef.current?.scrollToEnd({ animated: true });
+      }, 150);
+    });
+
+    const klavyeKapandi = Keyboard.addListener(hideEvent, () => {
+      // Klavye kapanınca da yumuşakça en tepeye geri döner
+      setTimeout(() => {
+        scrollRef.current?.scrollTo({ y: 0, animated: true });
+      }, 150);
+    });
+
+    return () => {
+      klavyeAcildi.remove();
+      klavyeKapandi.remove();
+    };
+  }, []);
+
   const [odaklandiMi, setOdaklandiMi] = useState(false);
   const inputRef = useRef<TextInput>(null);
 
@@ -56,22 +85,22 @@ export default function OnboardingScreen() {
       style={styles.anaEkran}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <ScrollView
-        contentContainerStyle={styles.icerik}
-        bounces={false}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
-        <View style={styles.ustBar}>
-          <View style={styles.ilerlemeKapsayici}>
-            <View style={styles.ilerlemeCizgisiAktif} />
-            <View style={styles.ilerlemeNoktasiPasif} />
-          </View>
-          <Text style={styles.adimMetni}>Adım 1/2</Text>
+      <View style={styles.ustBar}>
+        <View style={styles.ilerlemeKapsayici}>
+          <View style={styles.ilerlemeCizgisiAktif} />
+          <View style={styles.ilerlemeNoktasiPasif} />
         </View>
+        <Text style={styles.adimMetni}>Adım 1/2</Text>
+      </View>
 
-        <View style={styles.ustBosluk} />
-
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={styles.icerik}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+        automaticallyAdjustKeyboardInsets={true}
+      >
         <View style={styles.logoKapsayici}>
           <LinearGradient
             colors={["#1DB954", "#15A344"]}
@@ -110,7 +139,7 @@ export default function OnboardingScreen() {
               onChangeText={setIsim}
               onFocus={() => setOdaklandiMi(true)}
               onBlur={() => setOdaklandiMi(false)}
-              selectionColor="#1DB954"
+              selectionColor="transparent"
               cursorColor="#1DB954"
               autoCapitalize="words"
               returnKeyType="done"
@@ -118,10 +147,10 @@ export default function OnboardingScreen() {
           </Pressable>
         </View>
 
-        <View style={styles.altBosluk} />
+        {/* Klavye rahatlasın diye boşluk */}
+        <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* 🚀 %100 GARANTİ: BUTON ARTIK SCROLLVIEW'UN DIŞINDA! KLAVYE AÇILINCA DİREKT YUKARI ZIPLAYACAK */}
       <View style={styles.sabitAltButonAlani}>
         <TouchableOpacity
           style={[styles.buton, isim.trim() === "" && styles.butonPasif]}
@@ -144,18 +173,24 @@ export default function OnboardingScreen() {
 }
 
 const styles = StyleSheet.create({
-  anaEkran: { flex: 1, backgroundColor: "#121212" },
-  icerik: {
-    flexGrow: 1,
-    paddingHorizontal: 24,
-    paddingTop: 60,
-    paddingBottom: 20,
+  anaEkran: {
+    flex: 1,
+    backgroundColor: "#121212",
+    paddingTop: Platform.OS === "android" ? 50 : 60,
   },
   ustBar: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 20,
+    paddingHorizontal: 24,
+    paddingBottom: 20,
+  },
+  icerik: {
+    flexGrow: 1,
+    paddingHorizontal: 24,
+    paddingTop: 10,
+    paddingBottom: 20,
+    justifyContent: "center",
   },
   ilerlemeKapsayici: { flexDirection: "row", gap: 8, alignItems: "center" },
   ilerlemeCizgisiAktif: {
@@ -180,9 +215,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "500",
   },
-  ustBosluk: { flex: 0.5 },
-  altBosluk: { flex: 1 },
-  logoKapsayici: { alignItems: "center", marginBottom: 60 },
+  logoKapsayici: { alignItems: "center", marginBottom: 40 },
   logoKutu: {
     width: 80,
     height: 80,
@@ -208,7 +241,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "400",
   },
-  karsilamaKapsayici: { alignItems: "center", marginBottom: 40 },
+  karsilamaKapsayici: { alignItems: "center", marginBottom: 30 },
   merhabaMetin: {
     color: "white",
     fontSize: 28,
@@ -243,12 +276,10 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(29, 185, 84, 0.05)",
   },
   inputGirdi: { color: "white", fontSize: 16, fontWeight: "500", padding: 0 },
-
-  // 🚀 YENİ EKLENEN SABİT BUTON ALANI
   sabitAltButonAlani: {
     paddingHorizontal: 24,
     paddingTop: 10,
-    paddingBottom: Platform.OS === "ios" ? 40 : 24, // iPhone çentiği için alt boşluk
+    paddingBottom: Platform.OS === "ios" ? 40 : 24,
     backgroundColor: "#121212",
   },
   buton: {

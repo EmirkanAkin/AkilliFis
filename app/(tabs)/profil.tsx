@@ -10,16 +10,19 @@ import {
   doc,
   getDocs,
   query,
+  serverTimestamp,
   where,
 } from "firebase/firestore";
 import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -40,11 +43,20 @@ const parseTarih = (tarihStr: string) => {
 
 export default function ProfilScreen() {
   const router = useRouter();
-  const { isim, butce, uid, setIsim, setButce } = useStore();
+
+  const { isim, butce, uid, sistemiSifirla } = useStore();
 
   const [yukleniyor, setYukleniyor] = useState(true);
   const [sifirlaniyor, setSifirlaniyor] = useState(false);
   const [sifirlaModalAcik, setSifirlaModalAcik] = useState(false);
+
+  const [feedbackModalAcik, setFeedbackModalAcik] = useState(false);
+  const [feedbackBaslik, setFeedbackBaslik] = useState("");
+  const [feedbackMesaj, setFeedbackMesaj] = useState("");
+  const [feedbackGonderiliyor, setFeedbackGonderiliyor] = useState(false);
+
+  const [basariModalAcik, setBasariModalAcik] = useState(false);
+  const [hataUyarisiAcik, setHataUyarisiAcik] = useState(false);
 
   // İSTATİSTİK STATELERİ
   const [toplamFisSayisi, setToplamFisSayisi] = useState(0);
@@ -127,7 +139,6 @@ export default function ProfilScreen() {
 
     if (aktifUid) {
       try {
-        // 1. Fişleri Sil
         const fislerQ = query(
           collection(db, "Fisler"),
           where("kullanici_id", "==", aktifUid),
@@ -135,7 +146,6 @@ export default function ProfilScreen() {
         const fislerSnap = await getDocs(fislerQ);
         for (const doc of fislerSnap.docs) await deleteDoc(doc.ref);
 
-        // 2. Ürünleri Sil
         const urunlerQ = query(
           collection(db, "Urunler"),
           where("kullanici_id", "==", aktifUid),
@@ -145,15 +155,12 @@ export default function ProfilScreen() {
 
         await deleteDoc(doc(db, "Kullanicilar", aktifUid));
 
-        // 4. Cihaz hafızasını (Zustand) temizle
-        setIsim("");
-        setButce("0");
+        sistemiSifirla();
 
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setSifirlaModalAcik(false);
         setSifirlaniyor(false);
 
-        // Kullanıcıyı uygulamanın en başına (/ilkgiris) yönlendir
         router.replace("/ilkgiris");
       } catch (error) {
         console.error("Sıfırlama Hatası:", error);
@@ -162,6 +169,45 @@ export default function ProfilScreen() {
       }
     } else {
       setSifirlaniyor(false);
+    }
+  };
+
+  const feedbackGonder = async () => {
+    if (!feedbackBaslik.trim() || !feedbackMesaj.trim()) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      setHataUyarisiAcik(true); // Eksik bilgi uyarısı için kendi modalımız
+      return;
+    }
+
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setFeedbackGonderiliyor(true);
+
+    try {
+      const aktifUid = uid || auth.currentUser?.uid || "Bilinmiyor";
+
+      await addDoc(collection(db, "GeriBildirimler"), {
+        kullanici_id: aktifUid,
+        kullanici_ismi: isim || "Bilinmiyor",
+        baslik: feedbackBaslik.trim(),
+        mesaj: feedbackMesaj.trim(),
+        tarih: serverTimestamp(),
+        durum: "Okunmadı",
+      });
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+      setFeedbackModalAcik(false);
+      setFeedbackBaslik("");
+      setFeedbackMesaj("");
+
+      setTimeout(() => {
+        setBasariModalAcik(true);
+      }, 400);
+    } catch (error) {
+      console.error("Feedback Hatası:", error);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setFeedbackGonderiliyor(false);
     }
   };
 
@@ -247,10 +293,6 @@ export default function ProfilScreen() {
         }
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert(
-        "Başarılı!",
-        "3 aylık detaylı ürün kategorili test fişleri eklendi! Analiz sayfasına koş!",
-      );
       istatistikleriGetir();
     } catch (error) {
       console.error("Test verisi eklenirken hata:", error);
@@ -341,6 +383,45 @@ export default function ProfilScreen() {
           <View style={styles.menuKapsayici}>
             <Text style={styles.menuBaslik}>AYARLAR</Text>
             <View style={styles.menuListeKutu}>
+              <TouchableOpacity
+                style={[
+                  styles.menuOgesi,
+                  {
+                    borderBottomWidth: 1,
+                    borderBottomColor: "rgba(255,255,255,0.05)",
+                  },
+                ]}
+                activeOpacity={0.7}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setFeedbackModalAcik(true);
+                }}
+              >
+                <View
+                  style={[
+                    styles.menuIkonZemin,
+                    {
+                      backgroundColor: "rgba(29, 185, 84, 0.12)",
+                      borderColor: "rgba(29, 185, 84, 0.20)",
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name="chatbubbles-outline"
+                    size={16}
+                    color="#1DB954"
+                  />
+                </View>
+                <Text style={styles.menuOgeMetin}>
+                  Bize Ulaşın / Geri Bildirim
+                </Text>
+                <Ionicons
+                  name="chevron-forward"
+                  size={16}
+                  color="rgba(255,255,255,0.3)"
+                />
+              </TouchableOpacity>
+
               <View style={styles.menuOgesi}>
                 <View
                   style={[
@@ -358,7 +439,7 @@ export default function ProfilScreen() {
                   />
                 </View>
                 <Text style={styles.menuOgeMetin}>Uygulama Versiyonu</Text>
-                <Text style={styles.menuSagBilgi}>1.0.0</Text>
+                <Text style={styles.menuSagBilgi}>1.0.0 Beta</Text>
               </View>
             </View>
           </View>
@@ -438,6 +519,181 @@ export default function ProfilScreen() {
                 )}
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={feedbackModalAcik}
+        transparent={true}
+        animationType="slide"
+      >
+        <KeyboardAvoidingView
+          style={styles.feedbackModalArkaPlan}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <View style={styles.feedbackModalKutu}>
+            <View style={styles.tutuamacKapsayici}>
+              <View style={styles.tutuamac} />
+            </View>
+
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                marginBottom: 20,
+              }}
+            >
+              <Ionicons
+                name="chatbubbles"
+                size={24}
+                color="#1DB954"
+                style={{ marginRight: 10 }}
+              />
+              <Text style={styles.feedbackBaslik}>Bize Ulaşın</Text>
+            </View>
+
+            <Text style={styles.feedbackBilgi}>
+              Önerileriniz, şikayetleriniz veya bulduğunuz hatalar bizim için
+              çok değerli. Bize her şeyi yazabilirsiniz!
+            </Text>
+
+            <Text style={styles.inputEtiket}>KONU BAŞLIĞI</Text>
+            <TextInput
+              style={styles.feedbackInput}
+              placeholder="Örn: Uygulama Harika!"
+              placeholderTextColor="rgba(255,255,255,0.3)"
+              value={feedbackBaslik}
+              onChangeText={setFeedbackBaslik}
+              maxLength={40}
+              cursorColor="#1DB954"
+            />
+
+            <Text style={styles.inputEtiket}>MESAJINIZ</Text>
+            <TextInput
+              style={[styles.feedbackInput, styles.feedbackInputCoklu]}
+              placeholder="Mesajınızı buraya yazın..."
+              placeholderTextColor="rgba(255,255,255,0.3)"
+              value={feedbackMesaj}
+              onChangeText={setFeedbackMesaj}
+              multiline={true}
+              numberOfLines={4}
+              textAlignVertical="top"
+              cursorColor="#1DB954"
+            />
+
+            <View style={styles.feedbackButonKapsayici}>
+              <TouchableOpacity
+                style={styles.feedbackIptalButon}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setFeedbackModalAcik(false);
+                }}
+                disabled={feedbackGonderiliyor}
+              >
+                <Text style={styles.feedbackIptalMetin}>Vazgeç</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.feedbackGonderButon,
+                  (!feedbackBaslik.trim() || !feedbackMesaj.trim()) && {
+                    opacity: 0.5,
+                  },
+                ]}
+                onPress={feedbackGonder}
+                disabled={
+                  feedbackGonderiliyor ||
+                  !feedbackBaslik.trim() ||
+                  !feedbackMesaj.trim()
+                }
+              >
+                {feedbackGonderiliyor ? (
+                  <ActivityIndicator size="small" color="white" />
+                ) : (
+                  <Text style={styles.feedbackGonderMetin}>Gönder</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      <Modal visible={hataUyarisiAcik} transparent={true} animationType="fade">
+        <View style={styles.modalArkaPlan}>
+          <View style={styles.modalKutu}>
+            {/* Sağ Üst Kapatma Çarpısı */}
+            <TouchableOpacity
+              style={styles.sagUstKapatButonu}
+              onPress={() => setHataUyarisiAcik(false)}
+            >
+              <Ionicons name="close" size={24} color="rgba(255,255,255,0.4)" />
+            </TouchableOpacity>
+
+            <View style={styles.modalIkonZemin}>
+              <Ionicons name="alert-circle" size={32} color="#FF6B6B" />
+            </View>
+            <Text style={styles.modalBaslik}>Eksik Bilgi</Text>
+            <Text style={styles.modalMesaj}>
+              Lütfen başlık ve mesaj alanlarını doldurun.
+            </Text>
+            <TouchableOpacity
+              style={[styles.modalIptalButon, { width: "100%", marginTop: 10 }]}
+              onPress={() => setHataUyarisiAcik(false)}
+            >
+              <Text style={styles.modalIptalMetin}>Tamam</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={basariModalAcik} transparent={true} animationType="fade">
+        <View style={styles.modalArkaPlan}>
+          <View
+            style={[
+              styles.modalKutu,
+              { borderColor: "rgba(29, 185, 84, 0.3)", shadowColor: "#1DB954" },
+            ]}
+          >
+            {/* Sağ Üst Kapatma Çarpısı */}
+            <TouchableOpacity
+              style={styles.sagUstKapatButonu}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setBasariModalAcik(false);
+              }}
+            >
+              <Ionicons name="close" size={24} color="rgba(255,255,255,0.4)" />
+            </TouchableOpacity>
+
+            <View
+              style={[
+                styles.modalIkonZemin,
+                {
+                  backgroundColor: "rgba(29, 185, 84, 0.1)",
+                  borderColor: "rgba(29, 185, 84, 0.3)",
+                },
+              ]}
+            >
+              <Ionicons name="checkmark-circle" size={36} color="#1DB954" />
+            </View>
+            <Text style={styles.modalBaslik}>Teşekkürler! 💚</Text>
+            <Text style={styles.modalMesaj}>
+              Geri bildiriminiz bize ulaştı. Uygulamayı geliştirmemize yardımcı
+              olduğunuz için minnettarız.
+            </Text>
+            <TouchableOpacity
+              style={[
+                styles.modalOnayButon,
+                { backgroundColor: "#1DB954", width: "100%", marginTop: 10 },
+              ]}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setBasariModalAcik(false);
+              }}
+            >
+              <Text style={styles.modalOnayMetin}>Kapat</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -617,6 +873,15 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 20,
     elevation: 10,
+    position: "relative",
+  },
+
+  sagUstKapatButonu: {
+    position: "absolute",
+    top: 16,
+    right: 16,
+    zIndex: 10,
+    padding: 4,
   },
   modalIkonZemin: {
     width: 64,
@@ -628,6 +893,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     borderWidth: 1,
     borderColor: "rgba(255, 107, 107, 0.3)",
+    marginTop: 10, // Çarpı ile çarpışmasın diye
   },
   modalBaslik: {
     color: "white",
@@ -664,4 +930,96 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   modalOnayMetin: { color: "white", fontSize: 15, fontWeight: "700" },
+
+  feedbackModalArkaPlan: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0,0,0,0.6)",
+  },
+  feedbackModalKutu: {
+    backgroundColor: "#18181B",
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    borderTopWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    paddingHorizontal: 25,
+    paddingTop: 10,
+    paddingBottom: Platform.OS === "ios" ? 40 : 25,
+    elevation: 20,
+  },
+  tutuamacKapsayici: {
+    alignItems: "center",
+    marginBottom: 20,
+    paddingVertical: 5,
+  },
+  tutuamac: {
+    width: 40,
+    height: 4,
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    borderRadius: 2,
+  },
+  feedbackBaslik: {
+    color: "white",
+    fontSize: 22,
+    fontWeight: "800",
+  },
+  feedbackBilgi: {
+    color: "rgba(255, 255, 255, 0.5)",
+    fontSize: 13,
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  inputEtiket: {
+    color: "rgba(255, 255, 255, 0.45)",
+    fontSize: 11,
+    fontWeight: "600",
+    letterSpacing: 1,
+    marginBottom: 8,
+  },
+  feedbackInput: {
+    backgroundColor: "#0A0A0A",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.12)",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    color: "white",
+    fontSize: 15,
+    marginBottom: 20,
+  },
+  feedbackInputCoklu: {
+    height: 120,
+    paddingTop: 14,
+  },
+  feedbackButonKapsayici: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 10,
+  },
+  feedbackIptalButon: {
+    flex: 1,
+    height: 52,
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  feedbackIptalMetin: {
+    color: "white",
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  feedbackGonderButon: {
+    flex: 2,
+    height: 52,
+    backgroundColor: "#1DB954",
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  feedbackGonderMetin: {
+    color: "white",
+    fontSize: 15,
+    fontWeight: "700",
+  },
 });

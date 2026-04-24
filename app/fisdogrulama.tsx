@@ -20,8 +20,15 @@ import {
 } from "react-native";
 import { Calendar, LocaleConfig } from "react-native-calendars";
 
-// FIREBASE VE STORE BAĞLANTILARI
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
+// FIREBASE VE STORE BAĞLANTILARI - GÜNCELLENDİ
+import {
+  addDoc,
+  collection,
+  getDocs,
+  query,
+  serverTimestamp,
+  where,
+} from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
 import { useStore } from "../store/useStore";
 
@@ -98,8 +105,7 @@ export default function FisDogrulamaScreen() {
 
   const [yukleniyor, setYukleniyor] = useState(false);
   const [tarihModalAcik, setTarihModalAcik] = useState(false);
-
-  // MANUEL DÜZENLEME STATE'LERİ
+  const [hataModalAcik, setHataModalAcik] = useState(false);
   const [urunModalAcik, setUrunModalAcik] = useState(false);
   const [secilenUrunIndex, setSecilenUrunIndex] = useState<number | null>(null);
   const [geciciAd, setGeciciAd] = useState("");
@@ -210,6 +216,33 @@ export default function FisDogrulamaScreen() {
     }
 
     try {
+      const q = query(
+        collection(db, "Fisler"),
+        where("kullanici_id", "==", aktifUid),
+        where("tarih", "==", tempFis.tarih),
+      );
+
+      const snapshot = await getDocs(q);
+      let zatenVarMi = false;
+
+      snapshot.forEach((doc: any) => {
+        const data = doc.data();
+        // Mağaza adı ve toplam tutar BİREBİR aynıysa yakala!
+        if (
+          data.magaza_adi === tempFis.magazaAdi &&
+          data.toplam_tutar === anlikToplam
+        ) {
+          zatenVarMi = true;
+        }
+      });
+
+      if (zatenVarMi) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        setHataModalAcik(true); // Efsane custom modalımızı tetikliyoruz
+        setYukleniyor(false);
+        return; // İşlemi anında durduruyoruz
+      }
+
       // 1. Ana Fişi Kaydet
       const fisRef = await addDoc(collection(db, "Fisler"), {
         kullanici_id: aktifUid,
@@ -230,7 +263,6 @@ export default function FisDogrulamaScreen() {
         }),
       );
 
-      // Tüm ürünlerin kaydını aynı anda başlat ve bitmesini bekle
       await Promise.all(urunKayitIslemleri);
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -763,6 +795,30 @@ export default function FisDogrulamaScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      <Modal visible={hataModalAcik} transparent={true} animationType="fade">
+        <View style={styles.hataModalArkaPlan}>
+          <View style={styles.hataModalKutu}>
+            <View style={styles.hataIkonZemin}>
+              <Ionicons name="alert-circle" size={36} color="#FF6B6B" />
+            </View>
+            <Text style={styles.hataBaslik}>Tekrarlanan Fiş!</Text>
+            <Text style={styles.hataMesaj}>
+              Bu fişi zaten daha önce eklemişsin. Bütçenden iki kere para
+              düşmemesi için işlemi durdurdum.
+            </Text>
+            <TouchableOpacity
+              style={styles.hataTamamButon}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setHataModalAcik(false);
+              }}
+            >
+              <Text style={styles.hataTamamMetin}>Anladım</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1102,4 +1158,65 @@ const styles = StyleSheet.create({
   },
   magazaOnaylaButonPasif: { backgroundColor: "rgba(255, 255, 255, 0.1)" },
   magazaOnaylaButonMetin: { color: "white", fontSize: 16, fontWeight: "700" },
+
+  hataModalArkaPlan: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.85)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 24,
+  },
+  hataModalKutu: {
+    width: "100%",
+    backgroundColor: "#18181B",
+    borderRadius: 24,
+    padding: 24,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255, 107, 107, 0.25)",
+    shadowColor: "#FF6B6B",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  hataIkonZemin: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "rgba(255, 107, 107, 0.1)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255, 107, 107, 0.3)",
+  },
+  hataBaslik: {
+    color: "white",
+    fontSize: 20,
+    fontWeight: "800",
+    marginBottom: 8,
+  },
+  hataMesaj: {
+    color: "rgba(255, 255, 255, 0.5)",
+    fontSize: 14,
+    textAlign: "center",
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  hataTamamButon: {
+    width: "100%",
+    height: 50,
+    backgroundColor: "rgba(255, 107, 107, 0.1)",
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255, 107, 107, 0.3)",
+  },
+  hataTamamMetin: {
+    color: "#FF6B6B",
+    fontSize: 16,
+    fontWeight: "700",
+  },
 });

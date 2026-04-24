@@ -41,7 +41,7 @@ interface HafizaTipi {
 
   tempFis: TempFis;
 
-  setUid: (yeniUid: string) => void;
+  setUid: (yeniUid: string | null) => void;
   setIsim: (yeniIsim: string) => void;
   setButce: (yeniButce: string) => void;
   setHarcamalar: (liste: Harcama[]) => void;
@@ -52,6 +52,8 @@ interface HafizaTipi {
 
   setTempFis: (veri: Partial<TempFis>) => void;
   toplamHarcama: () => number;
+
+  sistemiSifirla: () => void;
 }
 
 export const useStore = create<HafizaTipi>()(
@@ -87,13 +89,32 @@ export const useStore = create<HafizaTipi>()(
         set((state) => ({
           tempFis: { ...state.tempFis, ...veri },
         })),
+
       toplamHarcama: () => {
         const liste = get().harcamalar;
         return liste.reduce((toplam, harcama) => toplam + harcama.tutar, 0);
       },
+
+      sistemiSifirla: () =>
+        set({
+          uid: null,
+          isim: "Misafir",
+          butce: "0",
+          harcamalar: [],
+          tumFisler: [],
+          tumUrunler: [],
+          isFislerLoaded: false,
+          tempFis: {
+            magazaAdi: "",
+            tarih: "",
+            toplamTutar: 0,
+            kategori: "",
+            urunler: [],
+          },
+        }),
     }),
     {
-      name: "fis-takip-deposu", // AsyncStorage'da kaydedilecek klasör adı
+      name: "fis-takip-deposu",
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         uid: state.uid,

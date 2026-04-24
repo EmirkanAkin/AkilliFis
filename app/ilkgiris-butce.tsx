@@ -23,30 +23,33 @@ export default function IlkGirisButceScreen() {
   const router = useRouter();
 
   const scrollRef = useRef<ScrollView>(null);
-  const [klavyeAcik, setKlavyeAcik] = useState(false);
 
   const [seciliButce, setSeciliButce] = useState("5.000");
-
   const { isim, setButce, setUid } = useStore();
 
   useEffect(() => {
-    const klavyeGosterildi = Keyboard.addListener(
-      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
-      () => {
-        setKlavyeAcik(true);
-        setTimeout(() => {
-          scrollRef.current?.scrollToEnd({ animated: true });
-        }, 150);
-      },
-    );
-    const klavyeGizlendi = Keyboard.addListener(
-      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide",
-      () => setKlavyeAcik(false),
-    );
+    const showEvent =
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent =
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+    const klavyeAcildi = Keyboard.addListener(showEvent, () => {
+      // Klavye açıldığında ekranın boyuyla oynamadan sadece en alta kaydırır
+      setTimeout(() => {
+        scrollRef.current?.scrollToEnd({ animated: true });
+      }, 150);
+    });
+
+    const klavyeKapandi = Keyboard.addListener(hideEvent, () => {
+      // Klavye kapanınca da yumuşakça en tepeye geri döner
+      setTimeout(() => {
+        scrollRef.current?.scrollTo({ y: 0, animated: true });
+      }, 150);
+    });
 
     return () => {
-      klavyeGosterildi.remove();
-      klavyeGizlendi.remove();
+      klavyeAcildi.remove();
+      klavyeKapandi.remove();
     };
   }, []);
 
@@ -91,129 +94,129 @@ export default function IlkGirisButceScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={styles.zemin}
+      style={styles.anaEkran}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <View style={styles.anaKapsayici}>
-        <ScrollView
-          ref={scrollRef}
-          style={{ flex: 1 }}
-          contentContainerStyle={styles.scrollKapsayici}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          bounces={false}
-        >
-          <View style={styles.ustBar}>
-            <View style={styles.ilerlemeKapsayici}>
-              <View style={styles.ilerlemeNoktasiPasif} />
-              <View style={styles.ilerlemeCizgisiAktif} />
-            </View>
-            <Text style={styles.adimMetni}>Adım 2/2</Text>
-          </View>
-
-          <View style={styles.baslikKapsayici}>
-            <View style={styles.ikonKapsayici}>
-              <Ionicons name="sparkles" size={28} color="#1DB954" />
-            </View>
-            <Text style={styles.anaBaslik}>Aylık Bütçeni</Text>
-            <Text style={styles.anaBaslik}>Belirle</Text>
-            <Text style={styles.altBaslik}>
-              Harcamalarını kontrol altında tutmak için bir hedef belirle.
-            </Text>
-          </View>
-
-          <View style={styles.ortaAlan}>
-            <View style={styles.hizliSecimKapsayici}>
-              {[3000, 5000, 10000].map((deger) => {
-                const formatliDeger = deger
-                  .toString()
-                  .replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-                const aktifMi = seciliButce === formatliDeger;
-
-                return (
-                  <TouchableOpacity
-                    key={deger}
-                    style={[
-                      styles.hizliSecimButon,
-                      aktifMi && styles.hizliSecimButonAktif,
-                    ]}
-                    activeOpacity={0.7}
-                    onPress={() => hizliSecimYap(deger)}
-                  >
-                    <Text
-                      style={[
-                        styles.hizliSecimMetin,
-                        aktifMi && styles.hizliSecimMetinAktif,
-                      ]}
-                    >
-                      {formatliDeger} TL
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            <View style={styles.devGostergeKarti}>
-              <Text style={styles.devGostergeEtiket}>AYLIK BÜTÇE</Text>
-              <View style={styles.devRakamKapsayici}>
-                <TextInput
-                  style={styles.devRakamInput}
-                  value={seciliButce}
-                  onChangeText={butceDegisti}
-                  keyboardType="numeric"
-                  maxLength={10}
-                  cursorColor="#1DB954"
-                  selectionColor="transparent"
-                />
-                <Text style={styles.devParaBirimi}>TL</Text>
-              </View>
-              <View style={styles.ayracCizgi} />
-              <View style={styles.bilgiSatiri}>
-                <View style={styles.kucukYesilNokta} />
-                <Text style={styles.bilgiMetni}>
-                  İstediğin zaman değiştirebilirsin
-                </Text>
-              </View>
-            </View>
-          </View>
-
-          {klavyeAcik && <View style={{ height: 100 }} />}
-        </ScrollView>
-
-        <View style={styles.sabitAltButonAlani}>
-          <TouchableOpacity activeOpacity={0.8} onPress={devamEt}>
-            <LinearGradient
-              colors={["#1DB954", "#15A043"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.anaButon}
-            >
-              <Text style={styles.anaButonMetni}>Uygulamaya Başla</Text>
-            </LinearGradient>
-          </TouchableOpacity>
+      <View style={styles.ustBar}>
+        <View style={styles.ilerlemeKapsayici}>
+          <View style={styles.ilerlemeNoktasiPasif} />
+          <View style={styles.ilerlemeCizgisiAktif} />
         </View>
+        <Text style={styles.adimMetni}>Adım 2/2</Text>
+      </View>
+
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={styles.icerik}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+        automaticallyAdjustKeyboardInsets={true}
+      >
+        <View style={styles.baslikKapsayici}>
+          <View style={styles.ikonKapsayici}>
+            <Ionicons name="sparkles" size={28} color="#1DB954" />
+          </View>
+          <Text style={styles.anaBaslik}>Aylık Bütçeni</Text>
+          <Text style={styles.anaBaslik}>Belirle</Text>
+          <Text style={styles.altBaslik}>
+            Harcamalarını kontrol altında tutmak için bir hedef belirle.
+          </Text>
+        </View>
+
+        <View style={styles.ortaAlan}>
+          <View style={styles.hizliSecimKapsayici}>
+            {[3000, 5000, 10000].map((deger) => {
+              const formatliDeger = deger
+                .toString()
+                .replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+              const aktifMi = seciliButce === formatliDeger;
+
+              return (
+                <TouchableOpacity
+                  key={deger}
+                  style={[
+                    styles.hizliSecimButon,
+                    aktifMi && styles.hizliSecimButonAktif,
+                  ]}
+                  activeOpacity={0.7}
+                  onPress={() => hizliSecimYap(deger)}
+                >
+                  <Text
+                    style={[
+                      styles.hizliSecimMetin,
+                      aktifMi && styles.hizliSecimMetinAktif,
+                    ]}
+                  >
+                    {formatliDeger} TL
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <View style={styles.devGostergeKarti}>
+            <Text style={styles.devGostergeEtiket}>AYLIK BÜTÇE</Text>
+            <View style={styles.devRakamKapsayici}>
+              <TextInput
+                style={styles.devRakamInput}
+                value={seciliButce}
+                onChangeText={butceDegisti}
+                keyboardType="numeric"
+                maxLength={10}
+                cursorColor="#1DB954"
+                selectionColor="transparent"
+              />
+              <Text style={styles.devParaBirimi}>TL</Text>
+            </View>
+            <View style={styles.ayracCizgi} />
+            <View style={styles.bilgiSatiri}>
+              <View style={styles.kucukYesilNokta} />
+              <Text style={styles.bilgiMetni}>
+                İstediğin zaman değiştirebilirsin
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Klavye açıldığında ekran rahatça en dibe inebilsin diye biraz boşluk */}
+        <View style={{ height: 40 }} />
+      </ScrollView>
+
+      <View style={styles.sabitAltButonAlani}>
+        <TouchableOpacity activeOpacity={0.8} onPress={devamEt}>
+          <LinearGradient
+            colors={["#1DB954", "#15A043"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.anaButon}
+          >
+            <Text style={styles.anaButonMetni}>Uygulamaya Başla</Text>
+          </LinearGradient>
+        </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  zemin: { flex: 1, backgroundColor: "#121212" },
-  anaKapsayici: {
+  anaEkran: {
     flex: 1,
-    justifyContent: "space-between",
-  },
-  scrollKapsayici: {
-    flexGrow: 1,
-    paddingHorizontal: 24,
-    paddingTop: 60,
-    paddingBottom: 20,
+    backgroundColor: "#121212",
+    paddingTop: Platform.OS === "android" ? 50 : 60,
   },
   ustBar: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 30,
+    paddingHorizontal: 24,
+    paddingBottom: 20,
+  },
+  icerik: {
+    flexGrow: 1,
+    paddingHorizontal: 24,
+    paddingTop: 10,
+    paddingBottom: 20,
   },
   ilerlemeKapsayici: { flexDirection: "row", gap: 8, alignItems: "center" },
   ilerlemeNoktasiPasif: {
