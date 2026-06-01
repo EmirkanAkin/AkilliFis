@@ -6,9 +6,9 @@ import { getFirestore } from "firebase/firestore";
 import { getReactNativePersistence, initializeAuth } from "firebase/auth";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCO0ta9hTJHpEM1Ykd6-cIxh2lveLKxsu4",
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
   authDomain: "akillifis.firebaseapp.com",
-  projectId: "akillifis",
+  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
   storageBucket: "akillifis.firebasestorage.app",
   messagingSenderId: "1062272519950",
   appId: "1:1062272519950:web:0e368ba186dd51d765d15f",
