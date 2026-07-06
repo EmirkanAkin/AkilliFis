@@ -138,13 +138,6 @@ akillifis/
 6. Kullanıcı onaylar → Firebase Firestore'a kaydedilir
 ```
 
----
-
-## 📄 Lisans
-
-Bu proje MIT lisansı altında lisanslanmıştır.
-
----
 
 <div align="center">
 
