@@ -12,6 +12,12 @@
 
 *Fişini tara, harcamalarını anında analiz et.*
 
+<br />
+<img src="./assets/images/demo.gif" width="250" alt="Akıllı Fiş Demo" />
+<br />
+<i>Uygulama İçi Deneyim (Demo)</i>
+<br /><br />
+
 </div>
 
 ---
